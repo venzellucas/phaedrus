@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Toolchain
+        run: |
+          sw_vers
+          swiftc --version
+
+      - name: Check shell scripts
+        run: for f in scripts/*.sh; do zsh -n "$f"; done
+
+      - name: Build app
+        run: scripts/build.sh --no-install
+
+      - name: Verify bundle
+        run: |
+          plutil -lint build/Phaedrus.app/Contents/Info.plist
+          codesign --verify --verbose build/Phaedrus.app
+          test -x build/Phaedrus.app/Contents/MacOS/Phaedrus
+          test -f build/Phaedrus.app/Contents/Resources/mic-key.sh
