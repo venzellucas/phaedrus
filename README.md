@@ -5,6 +5,8 @@
 <p align="center"><b>Press 🎤, speak, and your words appear at the cursor in any Mac app.<br>
 Speech recognition runs entirely on your Mac.</b></p>
 
+<p align="center"><a href="https://venzellucas.github.io/phaedrus/">Website &amp; installation guide</a></p>
+
 > …writing is unfortunately like painting; for the creations of the painter have the attitude
 > of life, and yet if you ask them a question they preserve a solemn silence.
 >

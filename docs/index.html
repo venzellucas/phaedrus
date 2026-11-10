@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4efe5" />
+    <title>Phaedrus — Your voice, right where you write.</title>
+    <meta
+      name="description"
+      content="A small, open-source dictation app for macOS 26. Press a shortcut, speak, and put your words at the cursor. Speech recognition runs on your Mac."
+    />
+    <link rel="canonical" href="https://venzellucas.github.io/phaedrus/" />
+    <meta property="og:type" content="website" />
+    <meta
+      property="og:title"
+      content="Phaedrus — Your voice, right where you write."
+    />
+    <meta
+      property="og:description"
+      content="On-device dictation for macOS 26. Open source, no subscription, and no Accessibility permission."
+    />
+    <meta property="og:url" content="https://venzellucas.github.io/phaedrus/" />
+    <meta
+      property="og:image"
+      content="https://venzellucas.github.io/phaedrus/icon.png"
+    />
+    <meta
+      property="og:image:alt"
+      content="Phaedrus: a black microphone on a terracotta tile"
+    />
+    <link rel="icon" type="image/png" href="icon.png" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="site.js" defer></script>
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to content</a>
+    <header class="header wrap">
+      <a class="brand" href="./" aria-label="Phaedrus home"
+        ><img src="icon.png" alt="" width="48" height="48" /><span
+          >Phaedrus</span
+        ></a
+      >
+      <nav aria-label="Main navigation">
+        <a href="#how-it-works">How it works</a>
+        <a href="#install">Get the app</a>
+        <a href="https://github.com/venzellucas/phaedrus"
+          >GitHub <span aria-hidden="true">↗</span></a
+        >
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero wrap" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">
+            <span class="small-dot" aria-hidden="true"></span> A little app for
+            macOS
+          </p>
+          <h1 id="hero-title">
+            Your voice.<br />Right where<br />you <em>write.</em>
+          </h1>
+          <p class="hero-description">
+            Press a shortcut. Say what’s on your mind.<br
+              class="desktop-break"
+            />
+            Your words appear at the cursor, with speech recognition running
+            entirely on your Mac.
+          </p>
+          <div class="hero-actions">
+            <a class="button button-dark" href="#install"
+              >Get Phaedrus <span aria-hidden="true">↓</span></a
+            >
+            <a class="text-link" href="https://github.com/venzellucas/phaedrus"
+              >Explore the source <span aria-hidden="true">↗</span></a
+            >
+          </div>
+          <p class="hero-meta">
+            macOS 26+ <span aria-hidden="true">/</span> Free &amp; open source
+            <span aria-hidden="true">/</span> MIT license
+          </p>
+        </div>
+
+        <figure class="demo" aria-label="An illustrated example of dictation">
+          <div class="demo-top">
+            <span class="eyebrow">A thought, captured.</span
+            ><img src="icon.png" width="66" height="66" alt="" />
+          </div>
+          <div class="note-window">
+            <div class="window-bar">
+              <span class="window-dots" aria-hidden="true"
+                ><i></i><i></i><i></i></span
+              ><span>A blank page</span><span aria-hidden="true">⌘</span>
+            </div>
+            <div class="note-body">
+              <span class="note-label">A note to myself</span>
+              <p id="demo-text">
+                Leave a little room in the day for a good conversation.
+              </p>
+              <span class="cursor" aria-hidden="true"></span>
+            </div>
+            <div class="dictation-bubble">
+              <span class="record-dot" aria-hidden="true"></span
+              ><span id="demo-status">A thought, put into words.</span
+              ><span class="waveform" aria-hidden="true"
+                ><i></i><i></i><i></i><i></i><i></i><i></i><i></i
+              ></span>
+            </div>
+          </div>
+          <figcaption>
+            <span>Illustrated preview · no microphone used</span
+            ><button id="play-demo" type="button" hidden>
+              Play example <span aria-hidden="true">↻</span>
+            </button>
+          </figcaption>
+        </figure>
+      </section>
+
+      <section class="principles wrap" aria-label="What makes Phaedrus useful">
+        <article>
+          <span class="section-number">01 / PRIVATE</span>
+          <h2>On your Mac.</h2>
+          <p>
+            Apple’s speech models transcribe locally. No cloud transcription,
+            account, or API key.
+          </p>
+        </article>
+        <article>
+          <span class="section-number">02 / UNOBTRUSIVE</span>
+          <h2>There when you speak.</h2>
+          <p>
+            A small floating bubble while you dictate. No Dock icon or menu-bar
+            item taking up space.
+          </p>
+        </article>
+        <article>
+          <span class="section-number">03 / OPEN</span>
+          <h2>Yours to make use of.</h2>
+          <p>
+            Free to use, inspect, and adapt. A small Swift app with an MIT
+            license and no subscription.
+          </p>
+        </article>
+      </section>
+
+      <section
+        class="how wrap section"
+        id="how-it-works"
+        aria-labelledby="how-title"
+      >
+        <div class="section-heading">
+          <p class="eyebrow">From thought to text</p>
+          <h2 id="how-title">One shortcut.<br />Then just speak.</h2>
+          <p>Write a message, a note, or the first line of something new.</p>
+        </div>
+        <ol class="steps">
+          <li>
+            <span class="step-number" aria-hidden="true">1</span>
+            <div>
+              <h3>Put your cursor where you want the words.</h3>
+              <p>
+                Phaedrus inserts text through a macOS Service, without asking
+                for Accessibility permission.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">2</span>
+            <div>
+              <h3>Press your shortcut and start talking.</h3>
+              <p>
+                Use the microphone key on a compatible keyboard, or choose your
+                own shortcut. English (US) is selected by default.
+              </p>
+            </div>
+          </li>
+          <li>
+            <span class="step-number" aria-hidden="true">3</span>
+            <div>
+              <h3>Pause, and the words are there.</h3>
+              <p>
+                Three seconds of silence finishes dictation. Press
+                <kbd>Return</kbd> or click the bubble to finish sooner;
+                <kbd>Esc</kbd> cancels.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section
+        class="install-section"
+        id="install"
+        aria-labelledby="install-title"
+      >
+        <div class="wrap">
+          <div class="install-heading">
+            <div>
+              <p class="eyebrow">Make room for your voice</p>
+              <h2 id="install-title">Get Phaedrus.</h2>
+            </div>
+            <p>
+              A small project, ready to try.<br />Choose the installation that
+              suits you.
+            </p>
+          </div>
+          <div class="install-grid">
+            <article class="source-install">
+              <div class="option-title">
+                <h3>Build from source</h3>
+                <span class="tag">No paid account needed</span>
+              </div>
+              <p>
+                Requires macOS 26+ and Xcode Command Line Tools with the macOS
+                26 SDK or later. Install the tools with
+                <code>xcode-select --install</code>.
+              </p>
+              <div class="terminal">
+                <div class="terminal-header">
+                  <span>Terminal</span
+                  ><button id="copy-install" type="button" hidden>
+                    Copy commands
+                  </button>
+                </div>
+                <pre><code id="install-commands">git clone https://github.com/venzellucas/phaedrus.git
+cd phaedrus
+scripts/build.sh
+open ~/Applications/Phaedrus.app</code></pre>
+              </div>
+              <p class="install-note">
+                Builds and installs into <code>~/Applications</code>. No
+                administrator rights needed.
+              </p>
+              <p id="copy-status" class="sr-only" role="status"></p>
+            </article>
+            <article class="download-install">
+              <div class="option-title">
+                <h3>Try a built app</h3>
+                <span class="tag tag-outline">Test build</span>
+              </div>
+              <p>
+                For Apple silicon Macs running macOS 26+. Download a ZIP from
+                the latest successful <strong>main</strong> build, under
+                <strong>Artifacts</strong>.
+              </p>
+              <a
+                class="button button-cream"
+                href="https://github.com/venzellucas/phaedrus/actions/workflows/build.yml"
+                >Find a test download <span aria-hidden="true">↗</span></a
+              >
+              <p class="download-note">
+                GitHub sign-in required. Test downloads expire after 30 days.
+                Extract the ZIP and move the app to
+                <code>~/Applications</code> before opening it.
+              </p>
+              <p class="signing-note">
+                <strong>Not notarized by Apple.</strong> These builds use ad-hoc
+                signing. macOS may block the first launch; if you trust the app,
+                follow Apple’s
+                <a href="https://support.apple.com/en-us/102445"
+                  >Open Anyway instructions</a
+                >. Managed Macs may restrict this option.
+              </p>
+            </article>
+          </div>
+          <div class="first-launch">
+            <span class="eyebrow">The first time</span>
+            <p>
+              Open Phaedrus to set up your shortcut. Allow microphone access
+              when prompted. The speech model downloads from Apple on first use;
+              after that, recognition runs on your Mac.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section class="details wrap section" aria-labelledby="details-title">
+        <div class="section-heading">
+          <p class="eyebrow">A few things to know</p>
+          <h2 id="details-title">Small app.<br />Clear expectations.</h2>
+          <a
+            class="text-link"
+            href="https://github.com/venzellucas/phaedrus#readme"
+            >Read the full guide <span aria-hidden="true">↗</span></a
+          >
+        </div>
+        <div class="questions">
+          <details open>
+            <summary>Does it work in every app?</summary>
+            <p>
+              It works in apps that accept text through macOS Services. Some
+              apps, including some Electron apps, don’t. Phaedrus also copies
+              the result to the clipboard by default, so you can paste it with
+              <kbd>⌘V</kbd>.
+            </p>
+          </details>
+          <details>
+            <summary>Can I dictate in another language?</summary>
+            <p>
+              Yes. Open Phaedrus’s settings and choose up to three supported
+              languages. It listens in all selected languages and keeps the
+              transcript with the highest average confidence. Each extra
+              language adds processing work. Mixing languages within a sentence
+              may not work well.
+            </p>
+          </details>
+          <details>
+            <summary>What happens to my audio and text?</summary>
+            <p>
+              Speech recognition happens on your Mac. Phaedrus does not save
+              recordings or transcripts. The optional clipboard copy stays on
+              this Mac rather than using Universal Clipboard; clipboard managers
+              may still record it. You can turn copying off in settings.
+            </p>
+          </details>
+          <details>
+            <summary>How do I set a keyboard shortcut?</summary>
+            <p>
+              Open Phaedrus and enable “Use the 🎤 key to dictate,” or go to
+              System Settings → Keyboard → Keyboard Shortcuts → Services → Text
+              → Dictate with Phaedrus. During dictation, Return and Esc are
+              handled by Phaedrus.
+            </p>
+          </details>
+          <details>
+            <summary>How do I remove it?</summary>
+            <p>
+              Turn off “Use the 🎤 key to dictate” in Phaedrus’s settings before
+              deleting the app. If you have the source checkout, run
+              <code>scripts/uninstall.sh</code> to also remove saved
+              preferences, the Service shortcut, and microphone permission.
+            </p>
+          </details>
+        </div>
+      </section>
+
+      <aside class="afterword wrap">
+        <span class="asterisk" aria-hidden="true">✳</span>
+        <p>Socrates never wrote anything down.<br /><em>He talked.</em></p>
+        <span class="afterword-note"
+          >Named after Plato’s dialogue.<br />Made for getting your thoughts
+          onto the page.</span
+        >
+      </aside>
+    </main>
+
+    <footer class="footer wrap">
+      <a class="brand" href="./"
+        ><img src="icon.png" alt="" width="36" height="36" /><span
+          >Phaedrus</span
+        ></a
+      >
+      <p>
+        Made by <a href="https://github.com/venzellucas">Lucas Venzel</a>.
+        Shared under the
+        <a href="https://github.com/venzellucas/phaedrus/blob/main/LICENSE"
+          >MIT license</a
+        >.
+      </p>
+      <div>
+        <a href="https://github.com/venzellucas/phaedrus/issues"
+          >Report an issue</a
+        ><a
+          href="https://github.com/venzellucas/phaedrus/blob/main/CONTRIBUTING.md"
+          >Contribute <span aria-hidden="true">↗</span></a
+        >
+      </div>
+    </footer>
+  </body>
+</html>

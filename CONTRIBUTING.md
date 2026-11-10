@@ -45,6 +45,14 @@ For changes to dictation or settings, check these on a Mac and describe the resu
 For installer or uninstall changes, also check installation, reinstallation, and removal
 using a separate macOS user account. Uninstall deletes the app's saved preferences.
 
+## Website
+
+GitHub Pages publishes `docs/` from `main`. Edit `docs/index.html`, `docs/style.css`,
+or `docs/site.js`; no build tools or dependencies are needed. Preview locally with
+`python3 -m http.server 8000 --directory docs` and open `http://localhost:8000`.
+Check both a narrow phone layout and a desktop layout, keyboard navigation, the example,
+and the copy button. Keep installation details consistent with the README.
+
 ## Bug reports and pull requests
 
 Include your macOS version, Mac model, selected languages, target app, steps to reproduce,
