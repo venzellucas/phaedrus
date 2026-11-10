@@ -15,14 +15,14 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 ## Features
 
 - **On-device.** Uses Apple's `SpeechAnalyzer` / `SpeechTranscriber` (macOS 26). No cloud service, no API key, no subscription. Your audio never leaves the Mac.
-- **Picks the language for you.** Listens in up to three languages at once (Portuguese and English by default) and keeps the transcript that fits best.
+- **Optional language detection.** Starts with English (US). Select up to three languages in settings to listen in all of them and keep the transcript that fits best.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
 - **Stays out of the way.** No Dock icon and no menu-bar item. It starts when you press the key and quits after 15 idle minutes.
 
 ## Requirements
 
 - macOS 26 (Tahoe) or later
-- Xcode Command Line Tools to build it (`xcode-select --install`)
+- Xcode Command Line Tools with the macOS 26 SDK or later (`xcode-select --install`)
 
 ## Install
 
@@ -42,6 +42,21 @@ If your keyboard has no 🎤 key, click **Change shortcut in System Settings…*
 
 The first dictation asks for microphone access. Each language's speech model is downloaded
 from Apple once; the bubble shows the download progress.
+
+### Download a test build
+
+For **Apple silicon Macs running macOS 26 or later**, the latest successful
+[Build workflow](https://github.com/venzellucas/phaedrus/actions/workflows/build.yml)
+on `main` includes a `Phaedrus-macOS-arm64.zip` download under **Artifacts**.
+Sign in to GitHub to download it; test builds expire after 30 days.
+
+Extract the ZIP and move `Phaedrus.app` into `~/Applications` before opening it.
+If Phaedrus is already running, stop it first (`pkill -x Phaedrus` in Terminal).
+These builds are **ad-hoc signed, not notarized**. macOS may block the first launch;
+if you trust the download, follow Apple's
+[Open Anyway instructions](https://support.apple.com/en-us/102445)
+in System Settings → Privacy & Security. Managed Macs may restrict this option.
+Then open Phaedrus's settings and configure your shortcut as above.
 
 ## Use
 
@@ -64,7 +79,7 @@ Open **Phaedrus** from Spotlight or Finder:
 | Setting | Default |
 |---|---|
 | Shortcut: 🎤 key, or any shortcut | 🎤 key off until you enable it |
-| Languages (up to 3) | Portuguese (Brazil), English (US) |
+| Languages (up to 3) | English (US) |
 | Stop after silence | 3 s |
 | Give up if nothing is heard | 10 s |
 | Longest dictation | 5 min (up to 15) |
@@ -72,6 +87,8 @@ Open **Phaedrus** from Spotlight or Finder:
 | Start and stop sounds | on |
 
 The settings are stored in the `io.github.venzellucas.phaedrus` defaults domain.
+The language default applies to fresh installs; updating preserves your saved selection.
+To switch an existing install to English only, deselect the other languages in settings.
 
 ## Privacy
 
@@ -117,6 +134,11 @@ and the microphone permission. If you delete the app by hand, run `scripts/mic-k
 
 - Each dictation is transcribed in one language. Mixing languages within a sentence won't work well.
 - The app is ad-hoc signed and built from source. After a rebuild, macOS may ask for microphone access again.
+
+## Contributing
+
+Bug reports and small, focused pull requests are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md)
+for build instructions, manual checks, and what to include in a report.
 
 ## License
 

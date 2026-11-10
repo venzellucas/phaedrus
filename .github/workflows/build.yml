@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -11,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: macos-26
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
 
@@ -31,3 +33,44 @@ jobs:
           codesign --verify --verbose build/Phaedrus.app
           test -x build/Phaedrus.app/Contents/MacOS/Phaedrus
           test -f build/Phaedrus.app/Contents/Resources/mic-key.sh
+
+      - name: Package and verify test download
+        run: |
+          lipo -verify_arch arm64 build/Phaedrus.app/Contents/MacOS/Phaedrus
+          ditto -c -k --sequesterRsrc --keepParent build/Phaedrus.app build/Phaedrus-macOS-arm64.zip
+          check_dir=$(mktemp -d)
+          trap 'rm -rf "$check_dir"' EXIT
+          ditto -x -k build/Phaedrus-macOS-arm64.zip "$check_dir"
+          test -x "$check_dir/Phaedrus.app/Contents/MacOS/Phaedrus"
+          codesign --verify --strict --verbose "$check_dir/Phaedrus.app"
+          shasum -a 256 build/Phaedrus-macOS-arm64.zip
+
+      - name: Upload test download
+        id: download
+        uses: actions/upload-artifact@v7
+        with:
+          path: build/Phaedrus-macOS-arm64.zip
+          archive: false
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Download instructions
+        env:
+          DOWNLOAD_URL: ${{ steps.download.outputs.artifact-url }}
+        run: |
+          {
+            echo '## Phaedrus test build'
+            echo
+            echo "[Download Phaedrus for Apple silicon]($DOWNLOAD_URL)"
+            echo
+            echo 'Requires macOS 26 or later. GitHub sign-in is required; this download expires after 30 days.'
+            echo
+            echo 'Ad-hoc signed and not notarized. Extract the ZIP, move Phaedrus.app to ~/Applications, and open it there. See the README for first-launch instructions.'
+            echo
+            echo "Source commit: $GITHUB_SHA"
+            echo
+            echo 'SHA-256:'
+            echo '```text'
+            shasum -a 256 build/Phaedrus-macOS-arm64.zip
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

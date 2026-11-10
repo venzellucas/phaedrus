@@ -48,7 +48,7 @@ enum Prefs {
     static let idleQuitSeconds: TimeInterval = 15 * 60
 
     static var locales: [String] {
-        let l = d.stringArray(forKey: "locales") ?? ["pt_BR", "en_US"]
+        let l = d.stringArray(forKey: "locales") ?? ["en_US"]
         return Array((l.isEmpty ? ["en_US"] : l).prefix(maxLanguages))
     }
     static func num(_ k: String, _ def: Double) -> Double { d.object(forKey: k) == nil ? def : d.double(forKey: k) }
@@ -161,11 +161,10 @@ final class HotKeys {
     private static var installed = false
     static var handler: ((KeyAction) -> Void)?
 
-    private static func installOnce() {
-        guard !installed else { return }
-        installed = true
+    private static func installOnce() -> Bool {
+        guard !installed else { return true }
         var spec = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-        InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
+        let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, _ in
             var id = EventHotKeyID()
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
                               nil, MemoryLayout<EventHotKeyID>.size, nil, &id)
@@ -174,18 +173,26 @@ final class HotKeys {
             }
             return noErr
         }, 1, &spec, nil, nil)
+        installed = status == noErr
+        return installed
     }
 
-    func register() {
-        guard refs.isEmpty else { return }
-        HotKeys.installOnce()
+    func register() -> Bool {
+        guard refs.isEmpty else { return true }
+        guard HotKeys.installOnce() else { return false }
         let keys: [(Int, KeyAction)] = [(kVK_F18, .stop), (kVK_Return, .stop), (kVK_ANSI_KeypadEnter, .stop), (kVK_Escape, .cancel)]
         for (code, action) in keys {
             var ref: EventHotKeyRef?
             let st = RegisterEventHotKey(UInt32(code), 0, EventHotKeyID(signature: OSType(0x5068_6472 /* "Phdr" */), id: action.rawValue),
                                          GetApplicationEventTarget(), 0, &ref)
-            if st == noErr, let ref { refs.append(ref) }
+            guard st == noErr, let ref else {
+                dlog("hotkey registration failed: key=\(code), status=\(st)")
+                unregister()
+                return false
+            }
+            refs.append(ref)
         }
+        return true
     }
 
     func unregister() {
@@ -328,7 +335,14 @@ final class Controller: NSObject, NSApplicationDelegate {
         var stopRequestedAt = Date()
         var preparingSince: Date?
 
-        keys.register()                 // Esc works while starting, too
+        // Register every stop/cancel key before starting the microphone.
+        guard keys.register() else {
+            Prefs.sound("Basso")
+            hud.show(.error, "Dictation shortcut unavailable. Check for conflicts.")
+            pump(2.5)
+            hud.hide()
+            return nil
+        }
         hud.show(.preparing, "Starting…")
         engine.onPreview = { t in
             onMainRunLoop { [weak self] in
