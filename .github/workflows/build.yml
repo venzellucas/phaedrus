@@ -36,7 +36,7 @@ jobs:
 
       - name: Package and verify test download
         run: |
-          lipo -verify_arch arm64 build/Phaedrus.app/Contents/MacOS/Phaedrus
+          lipo build/Phaedrus.app/Contents/MacOS/Phaedrus -verify_arch arm64
           ditto -c -k --sequesterRsrc --keepParent build/Phaedrus.app build/Phaedrus-macOS-arm64.zip
           check_dir=$(mktemp -d)
           trap 'rm -rf "$check_dir"' EXIT
