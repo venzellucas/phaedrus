@@ -93,13 +93,17 @@ final class SettingsModel: ObservableObject {
 
     @Published var supported: [Locale] = []
     @Published var installed: Set<String> = []
-    @Published var selected: [String] { didSet { d.set(selected, forKey: "locales") } }
+    @Published var selected: [String] {
+        didSet { d.set(selected, forKey: "locales"); refreshCleanupAvailability() }
+    }
     @Published var silence: Double { didSet { d.set(silence, forKey: "silenceSeconds") } }
     @Published var noSpeech: Double { didSet { d.set(noSpeech, forKey: "noSpeechSeconds") } }
     @Published var maxMinutes: Double { didSet { d.set(maxMinutes * 60, forKey: "maxSeconds") } }
     @Published var copyToClipboard: Bool { didSet { d.set(copyToClipboard, forKey: "copyToClipboard") } }
     @Published var playSounds: Bool { didSet { d.set(playSounds, forKey: "playSounds") } }
     @Published var mixLanguages: Bool { didSet { d.set(mixLanguages, forKey: "mixLanguages") } }
+    @Published var smartCleanup: Bool { didSet { d.set(smartCleanup, forKey: "smartCleanup") } }
+    @Published var cleanupUnavailable: String? = "Checking Apple Intelligence…"
 
     @Published var micKey = false
     @Published var shortcut = "…"
@@ -114,6 +118,7 @@ final class SettingsModel: ObservableObject {
         copyToClipboard = Prefs.copyToClipboard
         playSounds = Prefs.playSounds
         mixLanguages = Prefs.mixLanguages
+        smartCleanup = Prefs.smartCleanup
     }
 
     func refresh() async {
@@ -126,6 +131,11 @@ final class SettingsModel: ObservableObject {
                 < (names.localizedString(forIdentifier: $1.identifier) ?? $1.identifier)
         }
         installed = Set(await SpeechTranscriber.installedLocales.map(\.identifier))
+        refreshCleanupAvailability()
+    }
+
+    func refreshCleanupAvailability() {
+        cleanupUnavailable = SmartCleanup.unavailableReason(localeIDs: selected)
     }
 
     func name(_ l: Locale) -> String { Locale.current.localizedString(forIdentifier: l.identifier) ?? l.identifier }
@@ -224,6 +234,21 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
+            Section("Smart cleanup") {
+                Toggle("Use on-device Smart cleanup (experimental)", isOn: $m.smartCleanup)
+                    .disabled(m.cleanupUnavailable != nil && !m.smartCleanup)
+                Text("Uses Apple Intelligence to choose between recognized words and add missing sentence-ending punctuation. Enable language mixing above to compare languages. Your words stay on this Mac.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("May take up to five seconds. If cleanup is unavailable or fails, Phaedrus uses the existing transcript.")
+                    .font(.caption).foregroundStyle(.secondary)
+                if let reason = m.cleanupUnavailable {
+                    Text(reason).font(.caption).foregroundStyle(.secondary)
+                    Button("Check availability") { m.refreshCleanupAvailability() }
+                } else {
+                    Text("Ready on this Mac").font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             Section("After dictating") {
                 Toggle("Also copy the text to the clipboard", isOn: $m.copyToClipboard)
                 Text("Useful in apps that don't accept Services text: just press ⌘V. The copy stays on this Mac (not shared via Universal Clipboard), but clipboard managers can record it.")
@@ -245,6 +270,9 @@ struct SettingsView: View {
         .formStyle(.grouped)
         .frame(width: 480, height: 700)
         .task { await m.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            m.refreshCleanupAvailability()
+        }
     }
 
     private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, unit: String) -> some View {

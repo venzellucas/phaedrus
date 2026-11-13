@@ -27,8 +27,11 @@ jobs:
       - name: Build app
         run: scripts/build.sh --no-install
 
-      - name: Check transcript alignment
+      - name: Check transcript alignment and cleanup
         run: scripts/test.sh
+
+      - name: Check native model integration
+        run: scripts/test-native-cleanup.sh
 
       - name: Render recording panel previews
         run: scripts/preview-hud.sh

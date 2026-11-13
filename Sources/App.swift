@@ -58,6 +58,7 @@ enum Prefs {
     static var copyToClipboard: Bool { flag("copyToClipboard", true) }
     static var playSounds: Bool { flag("playSounds", true) }
     static var mixLanguages: Bool { flag("mixLanguages", false) }
+    static var smartCleanup: Bool { flag("smartCleanup", false) }
     static func sound(_ name: String) { if playSounds { NSSound(named: name)?.play() } }
 }
 
@@ -134,6 +135,7 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var finished = false
     private var resultText: String?
     private var errorText: String?
+    private var refiningSince: Date?
 
     func applicationDidFinishLaunching(_ n: Notification) {
         NSApp.servicesProvider = self
@@ -238,6 +240,9 @@ final class Controller: NSObject, NSApplicationDelegate {
         finished = false
         resultText = nil
         errorText = nil
+        refiningSince = nil
+        var completionTask: Task<Void, Never>?
+        defer { completionTask?.cancel() }
 
         let engine = DictationEngine()
         let abandoned = AtomicFlag()    // set when the session ends before `start` returns
@@ -257,11 +262,12 @@ final class Controller: NSObject, NSApplicationDelegate {
 
         let locales = Prefs.locales
         let mixLanguages = Prefs.mixLanguages
+        let smartCleanup = Prefs.smartCleanup
         hud.languages(locales)
         Task.detached {
             do {
                 dlog("starting engine: \(locales.joined(separator: ","))")
-                try await engine.start(localeIDs: locales, mixLanguages: mixLanguages)
+                try await engine.start(localeIDs: locales, mixLanguages: mixLanguages, smartCleanup: smartCleanup)
                 if abandoned.isSet { await engine.abort(); return }
                 dlog("listening")
                 onMainRunLoop { [weak self] in self?.didStartListening(id, engine) }
@@ -270,7 +276,7 @@ final class Controller: NSObject, NSApplicationDelegate {
                 if abandoned.isSet { return }
                 let message = error.localizedDescription
                 onMainRunLoop { [weak self] in
-                    guard let self, self.sessionID == id else { return }
+                    guard let self, self.sessionID == id, !self.finished else { return }
                     self.errorText = message
                     self.finished = true
                 }
@@ -343,20 +349,37 @@ final class Controller: NSObject, NSApplicationDelegate {
                 listening = false
                 keys.unregister()
                 hud.show(.transcribing, req == .cancel ? "Cancelled" : "Finishing…")
-                Task.detached {
+                completionTask = Task.detached {
                     do {
                         let out = try await engine.stop(cancel: req == .cancel)
                         dlog("stopped: \(out.map { "\($0.text.count) chars, \($0.localeIDs.joined(separator: "+")), confidence \(String(format: "%.2f", $0.confidence))" } ?? "no text")")
-                        let text = out?.text
+                        var text = out?.text
+                        if let plan = out?.cleanupPlan, !Task.isCancelled {
+                            let ready = await withCheckedContinuation { continuation in
+                                onMainRunLoop { [weak self] in
+                                    guard let self, self.sessionID == id, !self.finished else {
+                                        continuation.resume(returning: false)
+                                        return
+                                    }
+                                    self.resultText = plan.fallback.text
+                                    self.refiningSince = Date()
+                                    self.hud.status("Refining…")
+                                    continuation.resume(returning: true)
+                                }
+                            }
+                            guard ready else { return }
+                            text = await SmartCleanup.refine(plan).text
+                        }
+                        let finalText = text
                         onMainRunLoop { [weak self] in
-                            guard let self, self.sessionID == id else { return }
-                            self.resultText = text
+                            guard let self, self.sessionID == id, !self.finished else { return }
+                            self.resultText = finalText
                             self.finished = true
                         }
                     } catch {
                         let message = error.localizedDescription
                         onMainRunLoop { [weak self] in
-                            guard let self, self.sessionID == id else { return }
+                            guard let self, self.sessionID == id, !self.finished else { return }
                             self.errorText = message
                             self.finished = true
                         }
@@ -364,7 +387,14 @@ final class Controller: NSObject, NSApplicationDelegate {
                 }
             }
 
-            if stopping && now.timeIntervalSince(stopRequestedAt) > 20 {
+            if let refiningSince {
+                // The async deadline normally returns first. Keep the finalized
+                // transcript even if a framework/scheduler stalls during cleanup.
+                if now.timeIntervalSince(refiningSince) > SmartCleanup.timeoutSeconds + 1 {
+                    completionTask?.cancel()
+                    finished = true
+                }
+            } else if stopping && now.timeIntervalSince(stopRequestedAt) > 20 {
                 errorText = "Transcription did not finish. Please try again."
                 finished = true
             }

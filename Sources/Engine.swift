@@ -22,7 +22,12 @@ struct PhaedrusError: LocalizedError {
 }
 
 final class DictationEngine: @unchecked Sendable {
-    struct Outcome { let text: String; let localeIDs: [String]; let confidence: Double }
+    struct Outcome: Sendable {
+        let text: String
+        let localeIDs: [String]
+        let confidence: Double
+        let cleanupPlan: CleanupPlan?
+    }
     struct AudioActivity { let level: Double; let lastBuffer: Date? }
 
     /// What `start` is currently doing (shown in the HUD; used by the startup watchdog).
@@ -76,6 +81,7 @@ final class DictationEngine: @unchecked Sendable {
     private var _audioLevel = 0.0
     private var _lastAudioBuffer: Date?
     private var mixLanguages = false
+    private var smartCleanup = false
 
     var phase: Phase { lock.withLock { _phase } }
     /// Fraction of the model download, while `phase == .download`.
@@ -92,8 +98,9 @@ final class DictationEngine: @unchecked Sendable {
 
     // MARK: start
 
-    func start(localeIDs: [String], mixLanguages: Bool = false) async throws {
+    func start(localeIDs: [String], mixLanguages: Bool = false, smartCleanup: Bool = false) async throws {
         self.mixLanguages = mixLanguages
+        self.smartCleanup = smartCleanup
         guard SpeechTranscriber.isAvailable else { throw PhaedrusError("On-device speech is not available on this Mac") }
         guard await AVCaptureDevice.requestAccess(for: .audio) else {
             throw PhaedrusError("Microphone access denied. Allow it in System Settings → Privacy & Security → Microphone")
@@ -209,14 +216,14 @@ final class DictationEngine: @unchecked Sendable {
         for run in r.text.runs {
             if let c = run.transcriptionConfidence { sum += c; count += 1 }
         }
-        let words = r.isFinal && mixLanguages ? Self.timedWords(r.text) : nil
+        let words = r.isFinal && (mixLanguages || smartCleanup) ? Self.timedWords(r.text) : nil
         lock.withLock {
             if r.isFinal {
                 t.finalText += s
                 t.volatileText = ""
                 t.confSum += sum; t.confCount += count
                 t.volConfSum = 0; t.volConfCount = 0
-                if mixLanguages {
+                if mixLanguages || smartCleanup {
                     if let words { t.finalWords.append(contentsOf: words) }
                     else { t.timingComplete = false }
                 }
@@ -302,22 +309,26 @@ final class DictationEngine: @unchecked Sendable {
         }
         if let readerError, lock.withLock({ tracks.allSatisfy(\.readerFailed) }) { throw readerError }
 
-        return lock.withLock {
+        let snapshot = lock.withLock { () -> (TranscriptMerger.Transcript, [TranscriptMerger.Transcript], Double)? in
             guard let best = leader() else { return nil }
-            let text = best.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty else { return nil }
-            if mixLanguages, best.timingComplete, best.volatileText.isEmpty {
-                func transcript(_ t: Track) -> TranscriptMerger.Transcript {
-                    .init(localeID: t.locale.identifier, text: t.finalText, words: t.finalWords)
-                }
-                let alternatives = tracks.filter {
-                    $0 !== best && !$0.readerFailed && $0.timingComplete && $0.volatileText.isEmpty
-                }.map(transcript)
-                let result = TranscriptMerger.merge(primary: transcript(best), alternatives: alternatives)
-                return Outcome(text: result.text, localeIDs: result.localeIDs, confidence: best.confidence)
+            func transcript(_ track: Track) -> TranscriptMerger.Transcript {
+                .init(localeID: track.locale.identifier, text: track.text,
+                      words: track.timingComplete && track.volatileText.isEmpty ? track.finalWords : [])
             }
-            return Outcome(text: text, localeIDs: [best.locale.identifier], confidence: best.confidence)
+            let alternatives = mixLanguages ? tracks.filter {
+                $0 !== best && !$0.readerFailed && $0.timingComplete && $0.volatileText.isEmpty
+            }.map(transcript) : []
+            return (transcript(best), alternatives, best.confidence)
         }
+        guard let (primary, alternatives, confidence) = snapshot else { return nil }
+        let merged = TranscriptMerger.merge(primary: primary, alternatives: alternatives)
+        guard !merged.text.isEmpty else { return nil }
+        // Include the primary recognizer too: a contextual choice can undo an
+        // uncertain heuristic substitution. Mixing off permits punctuation only.
+        let plan = smartCleanup ? CleanupPlan.make(fallback: merged,
+            alternatives: mixLanguages ? [primary] + alternatives : [],
+            localeIDs: mixLanguages ? tracks.map { $0.locale.identifier } : merged.localeIDs) : nil
+        return Outcome(text: merged.text, localeIDs: merged.localeIDs, confidence: confidence, cleanupPlan: plan)
     }
 
     /// Tears everything down (start failed half-way, or the session was abandoned).

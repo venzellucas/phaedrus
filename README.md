@@ -19,6 +19,7 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 - **On-device.** Uses Apple's `SpeechAnalyzer` / `SpeechTranscriber` (macOS 26). No cloud service, no API key, no subscription. Your audio never leaves the Mac.
 - **Optional language detection.** Starts with English (US). Select up to three languages in settings to listen in all of them and keep the transcript that fits best.
 - **Experimental language mixing.** Optionally combine words from the selected languages in one dictation, without translating them. This runs on-device and is off by default.
+- **Optional Smart cleanup.** Apple Intelligence can use sentence context to choose between recognized alternatives and add missing final punctuation. Runs on-device, with a five-second deadline and automatic fallback. Off by default.
 - **Quiet recording UI.** A smooth colored ribbon responds to microphone input, with elapsed time and all selected language codes. No distracting live transcript.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
 - **Stays out of the way.** No Dock icon and no menu-bar item. It starts when you press the key and quits after 15 idle minutes.
@@ -85,6 +86,7 @@ Open **Phaedrus** from Spotlight or Finder:
 | Shortcut: 🎤 key, or any shortcut | 🎤 key off until you enable it |
 | Languages (up to 3) | English (US) |
 | Mix languages in one dictation (experimental) | off |
+| Use on-device Smart cleanup (experimental) | off |
 | Stop after silence | 3 s |
 | Give up if nothing is heard | 10 s |
 | Longest dictation | 5 min (up to 15) |
@@ -104,17 +106,43 @@ With mixing disabled, the best whole-recording transcript still wins.
 Mixing aligns finalized words by their audio timestamps and replaces short spans only when
 another language has substantially higher confidence and covers the same speech. Missing
 timing, incomplete results, or ambiguous matches retain the original transcript. It does
-not translate or use a language model to rewrite what you said.
+not translate or rewrite what you said.
 
 This is a conservative heuristic, not guaranteed bilingual recognition. The language models'
 confidence scores may disagree even when both are wrong; borrowed words, names, and rapid
 switches still need testing with real speech. If you pause to find a word, increasing **Stop
 after silence** can help avoid finishing the recording too soon.
 
+### Smart cleanup with Apple Intelligence
+
+Enable **Use on-device Smart cleanup (experimental)** in Settings. The settings show whether
+Apple Intelligence and all selected languages are available on this Mac. Enable language
+mixing too if you want the model to choose between Portuguese/English alternatives; with
+mixing off, cleanup can only add missing final punctuation.
+
+After speech recognition finishes, the panel may briefly say **Refining…**. A local language
+model receives short disputed passages, their recognized alternatives and confidence scores,
+and nearby sentence context. It returns option IDs, never replacement prose. Phaedrus then
+assembles the selected recognition tokens and checks their audio boundaries again. High-confidence
+words, numerals, capitalized names, and common code/URL spellings are conservatively protected.
+Punctuation cleanup only adds a missing final `.`, `?`, or `!`; it doesn't rewrite sentences.
+
+One request reviews at most six disputed passages, with a bounded prompt. Additional passages
+retain the existing transcript, so long dictations are never truncated. Unavailable models,
+unsupported languages, refusal, invalid output, and inference errors keep the existing result.
+Cleanup waits at most five seconds for the model, then uses that same fallback. Audio and text
+stay on the Mac; no server, API key, or separately managed model is needed.
+
+This is experimental. A contextually plausible choice can still be wrong, and the model cannot
+hear the original audio. Compare enabled/disabled results on your own recordings before relying
+on it. Requires Apple Intelligence to be enabled with its local model ready; dictation itself
+continues to work without Apple Intelligence.
+
 ## Privacy
 
-- Audio is processed on the Mac by Apple's speech framework. The only network traffic is
-  Apple's one-time download of each language's speech model.
+- Audio is processed on the Mac by Apple's speech framework. Speech models are downloaded
+  from Apple. Optional Smart cleanup uses Apple Intelligence's system-managed local model;
+  this app never sends audio or transcripts to a cloud model.
 - Transcripts are not stored or logged. The debug log (below) records lengths and timings only.
 - The clipboard copy is marked for this Mac only, so Universal Clipboard does not send it to
   your other devices. Clipboard-manager apps can still record it; turn the copy off if that matters to you.
@@ -125,6 +153,9 @@ after silence** can help avoid finishing the recording too soon.
 |---|---|
 | `Sources/Engine.swift` | Microphone → `AVAudioEngine` → one `SpeechAnalyzer` with a `SpeechTranscriber` per language. The highest-confidence transcript is the baseline; optional mixing uses finalized timed words. Auto-stop combines microphone level with transcription activity. |
 | `Sources/TranscriptMerger.swift` | Conservative alignment and confidence-based replacement of spans across languages. Incomplete or misaligned alternatives leave the baseline intact. |
+| `Sources/CleanupPlan.swift` | Bounded alternative choices, protected words, prompt construction, and validation/reconstruction of model choices. |
+| `Sources/SmartCleanup.swift` | Optional on-device Foundation Models integration and availability checks. |
+| `Sources/CleanupDeadline.swift` | Cancellation and a deadline that also returns promptly when inference ignores cancellation. |
 | `Sources/HUD.swift` | Rounded recording panel, microphone-driven ribbon, elapsed time, and listening/finishing/error states. Respects Reduce Motion and Increase Contrast. |
 | `Sources/App.swift` | The Service entry point, temporary global keys and the session loop. The keys use Carbon `RegisterEventHotKey`, which needs no permission, and are registered only while a session runs. |
 | `Sources/SettingsView.swift` | The SwiftUI settings window. |

@@ -10,6 +10,7 @@ Use macOS 26 or later with Xcode Command Line Tools and the macOS 26 SDK or late
 ```sh
 scripts/build.sh --no-install  # compile and sign build/Phaedrus.app
 scripts/test.sh                # deterministic transcript alignment fixtures
+scripts/test-native-cleanup.sh # Foundation Models smoke check, synthetic text only
 scripts/preview-hud.sh         # render native panel states without microphone input
 scripts/build.sh               # rebuild and install to ~/Applications
 open ~/Applications/Phaedrus.app
@@ -24,8 +25,10 @@ It also packages an Apple silicon test ZIP, extracts it, and checks the executab
 signature again before uploading it as a workflow artifact. You can run **Build** manually
 from the Actions tab. Downloads expire after 30 days and require GitHub sign-in.
 It does not exercise microphone input, keyboard shortcuts, or text insertion.
-The alignment checks use synthetic timed transcripts; passing them does not establish
-recognition accuracy on real bilingual audio.
+The alignment and cleanup checks use synthetic timed transcripts and injected model decisions;
+passing them does not establish recognition accuracy or model quality on real bilingual audio.
+The native cleanup smoke check verifies the unavailable-model fallback on CI machines without
+Apple Intelligence, or bounds the output if the local model is available.
 
 ## Manual checks
 
@@ -53,6 +56,14 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   por favor”, longer language switches, single borrowed words, names, and monolingual speech.
   Also try three languages, a silent recording, and stopping mid-word. Verify no repeated or
   missing words at language boundaries and no translation of foreign expressions.
+- Smart cleanup defaults off and survives relaunch when enabled. Settings report disabled
+  Apple Intelligence, a model that isn't ready, and unsupported selected languages. Recheck
+  after enabling Apple Intelligence in System Settings. With mixing off, only missing final
+  punctuation may change. With mixing on, compare the same bilingual recordings with cleanup
+  enabled/disabled, especially names, numbers, negations, technical terms, and dictated commands.
+  Measure the extra finishing time; test long dictations and unavailable-model fallback.
+  The panel should say “Refining…” only after recognition finishes, and an inference failure
+  must still insert the existing transcript. Never log prompt or model-error text.
 - If changing shortcuts, check enabling and disabling the mic key, a login with the
   remap enabled, and preservation of unrelated `hidutil` mappings.
 

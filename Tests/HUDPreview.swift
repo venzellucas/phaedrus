@@ -19,6 +19,7 @@ enum HUDPreview {
             ("interrupted", .listening, "Listening", -1),
             ("preparing", .preparing, "Downloading speech model… 45%", nil),
             ("finishing", .transcribing, "Finishing…", nil),
+            ("refining", .transcribing, "Refining…", nil),
             ("error", .error, "Microphone access denied. Allow it in System Settings → Privacy & Security → Microphone", nil)
         ]
         for (name, mode, title, level) in states {
