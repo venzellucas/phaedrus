@@ -13,7 +13,6 @@
 import AppKit
 import AVFoundation
 import Carbon
-import QuartzCore
 
 /// Debug log to stderr, enabled with PHAEDRUS_DEBUG=1. Never pass transcript text to it.
 func dlog(_ message: @autoclosure () -> String) {
@@ -58,97 +57,8 @@ enum Prefs {
     static var maxSeconds: Double { min(num("maxSeconds", 300), maxDictationSeconds) }
     static var copyToClipboard: Bool { flag("copyToClipboard", true) }
     static var playSounds: Bool { flag("playSounds", true) }
+    static var mixLanguages: Bool { flag("mixLanguages", false) }
     static func sound(_ name: String) { if playSounds { NSSound(named: name)?.play() } }
-}
-
-// MARK: - HUD
-
-@MainActor
-final class HUD {
-    enum Mode { case preparing, listening, transcribing, error }
-
-    private let panel: NSPanel
-    private let dot = CALayer()
-    private let label = NSTextField(labelWithString: "")
-    var onClick: (() -> Void)?
-
-    init() {
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 48),
-                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isFloatingPanel = true
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = true
-        panel.hidesOnDeactivate = false
-
-        let bg = NSVisualEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
-        bg.material = .hudWindow
-        bg.state = .active
-        bg.blendingMode = .behindWindow
-        bg.wantsLayer = true
-        bg.layer?.cornerRadius = 24
-        bg.layer?.masksToBounds = true
-        panel.contentView = bg
-
-        dot.bounds = CGRect(x: 0, y: 0, width: 14, height: 14)
-        dot.position = CGPoint(x: 26, y: 24)
-        dot.cornerRadius = 7
-        bg.layer?.addSublayer(dot)
-
-        label.frame = NSRect(x: 46, y: 14, width: 360, height: 20)
-        label.font = .systemFont(ofSize: 14)
-        label.textColor = .labelColor
-        label.maximumNumberOfLines = 1
-        bg.addSubview(label)
-
-        bg.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(clicked)))
-    }
-
-    @objc private func clicked() { onClick?() }
-
-    func show(_ mode: Mode, _ text: String) {
-        label.stringValue = text
-        // the live preview keeps its newest words visible; status and errors keep their start
-        label.lineBreakMode = mode == .listening ? .byTruncatingHead : .byTruncatingTail
-        dot.removeAllAnimations()
-        switch mode {
-        case .preparing: dot.backgroundColor = NSColor.systemGray.cgColor
-        case .transcribing: dot.backgroundColor = NSColor.systemOrange.cgColor
-        case .error: dot.backgroundColor = NSColor.systemYellow.cgColor
-        case .listening:
-            dot.backgroundColor = NSColor.systemRed.cgColor
-            let scale = CABasicAnimation(keyPath: "transform.scale")
-            scale.fromValue = 0.8; scale.toValue = 1.35
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1.0; fade.toValue = 0.45
-            let g = CAAnimationGroup()
-            g.animations = [scale, fade]
-            g.duration = 0.7
-            g.autoreverses = true
-            g.repeatCount = .infinity
-            g.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            dot.add(g, forKey: "pulse")
-        }
-        if !panel.isVisible {
-            let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-            if let f = screen?.visibleFrame {
-                panel.setFrameOrigin(NSPoint(x: f.midX - panel.frame.width / 2, y: f.minY + 90))
-            }
-            panel.orderFrontRegardless()
-        }
-    }
-
-    /// Updates the text only (keeps the current mode).
-    func status(_ text: String) { label.stringValue = text }
-
-    func preview(_ text: String) {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        label.stringValue = t.isEmpty ? "Listening…" : t
-    }
-
-    func hide() { panel.orderOut(nil) }
 }
 
 // MARK: - Global keys (registered only during a session; no permission needed)
@@ -344,17 +254,14 @@ final class Controller: NSObject, NSApplicationDelegate {
             return nil
         }
         hud.show(.preparing, "Starting…")
-        engine.onPreview = { t in
-            onMainRunLoop { [weak self] in
-                if let self, self.sessionID == id, self.listening { self.hud.preview(t) }
-            }
-        }
 
         let locales = Prefs.locales
+        let mixLanguages = Prefs.mixLanguages
+        hud.languages(locales)
         Task.detached {
             do {
                 dlog("starting engine: \(locales.joined(separator: ","))")
-                try await engine.start(localeIDs: locales)
+                try await engine.start(localeIDs: locales, mixLanguages: mixLanguages)
                 if abandoned.isSet { await engine.abort(); return }
                 dlog("listening")
                 onMainRunLoop { [weak self] in self?.didStartListening(id, engine) }
@@ -406,6 +313,10 @@ final class Controller: NSObject, NSApplicationDelegate {
                 continue
             }
 
+            if listening {
+                hud.updateAudio(engine.audioActivity, elapsed: now.timeIntervalSince(listeningSince))
+            }
+
             if listening && stopRequest == nil {
                 let quiet = now.timeIntervalSince(engine.lastActivity)
                 if engine.heardSomething {
@@ -431,11 +342,11 @@ final class Controller: NSObject, NSApplicationDelegate {
                 stopRequestedAt = now
                 listening = false
                 keys.unregister()
-                hud.show(.transcribing, req == .cancel ? "Cancelled" : "Transcribing…")
+                hud.show(.transcribing, req == .cancel ? "Cancelled" : "Finishing…")
                 Task.detached {
                     do {
                         let out = try await engine.stop(cancel: req == .cancel)
-                        dlog("stopped: \(out.map { "\($0.text.count) chars, \($0.locale.identifier), confidence \(String(format: "%.2f", $0.confidence))" } ?? "no text")")
+                        dlog("stopped: \(out.map { "\($0.text.count) chars, \($0.localeIDs.joined(separator: "+")), confidence \(String(format: "%.2f", $0.confidence))" } ?? "no text")")
                         let text = out?.text
                         onMainRunLoop { [weak self] in
                             guard let self, self.sessionID == id else { return }
@@ -480,7 +391,7 @@ final class Controller: NSObject, NSApplicationDelegate {
         listening = true
         listeningSince = Date()
         Prefs.sound("Tink")
-        hud.show(.listening, "Listening…")
+        hud.show(.listening, "Listening")
     }
 
     private func pump(_ seconds: TimeInterval) {

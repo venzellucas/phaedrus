@@ -99,6 +99,7 @@ final class SettingsModel: ObservableObject {
     @Published var maxMinutes: Double { didSet { d.set(maxMinutes * 60, forKey: "maxSeconds") } }
     @Published var copyToClipboard: Bool { didSet { d.set(copyToClipboard, forKey: "copyToClipboard") } }
     @Published var playSounds: Bool { didSet { d.set(playSounds, forKey: "playSounds") } }
+    @Published var mixLanguages: Bool { didSet { d.set(mixLanguages, forKey: "mixLanguages") } }
 
     @Published var micKey = false
     @Published var shortcut = "…"
@@ -112,6 +113,7 @@ final class SettingsModel: ObservableObject {
         maxMinutes = (Prefs.maxSeconds / 60).rounded()
         copyToClipboard = Prefs.copyToClipboard
         playSounds = Prefs.playSounds
+        mixLanguages = Prefs.mixLanguages
     }
 
     func refresh() async {
@@ -203,8 +205,12 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .frame(height: 170)
+                Toggle("Mix languages in one dictation (experimental)", isOn: $m.mixLanguages)
+                    .disabled(m.selected.count < 2)
+                Text("Keeps words in the language you speak, including switches within a sentence. Select at least two languages. Results can still be wrong; turn this off to use the best single-language transcript.")
+                    .font(.caption).foregroundStyle(.secondary)
             } header: { Text("Languages") } footer: {
-                Text("Phaedrus listens in every selected language at once (up to \(Prefs.maxLanguages)) and keeps the one that fits best. Each language's model is downloaded from Apple the first time it's used. Every extra language adds work while you speak.")
+                Text("Phaedrus listens in every selected language at once (up to \(Prefs.maxLanguages)). Mixing is optional and runs entirely on this Mac. Each language's model is downloaded from Apple the first time it's used. Every extra language adds work while you speak.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 
@@ -213,6 +219,8 @@ struct SettingsView: View {
                 slider("Give up if nothing is heard", value: $m.noSpeech, range: 5...30, step: 1, unit: "s")
                 slider("Longest dictation", value: $m.maxMinutes, range: 1...15, step: 1, unit: "min")
                 Text("Stop early with 🎤, Return, or a click on the bubble; Esc cancels. While the bubble is shown, Return and Esc go to Phaedrus, not to other apps.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("The recording ribbon reacts to microphone input. Live transcripts stay hidden so you can focus on speaking.")
                     .font(.caption).foregroundStyle(.secondary)
             }
 

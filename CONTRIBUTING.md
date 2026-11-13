@@ -9,6 +9,7 @@ Use macOS 26 or later with Xcode Command Line Tools and the macOS 26 SDK or late
 
 ```sh
 scripts/build.sh --no-install  # compile and sign build/Phaedrus.app
+scripts/test.sh                # deterministic transcript alignment fixtures
 scripts/build.sh               # rebuild and install to ~/Applications
 open ~/Applications/Phaedrus.app
 ```
@@ -22,6 +23,8 @@ It also packages an Apple silicon test ZIP, extracts it, and checks the executab
 signature again before uploading it as a workflow artifact. You can run **Build** manually
 from the Actions tab. Downloads expire after 30 days and require GitHub sign-in.
 It does not exercise microphone input, keyboard shortcuts, or text insertion.
+The alignment checks use synthetic timed transcripts; passing them does not establish
+recognition accuracy on real bilingual audio.
 
 ## Manual checks
 
@@ -39,6 +42,16 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   error before starting the microphone. After resolving the conflict, retrying works.
 - Denied microphone access produces a useful message. The first use of a new language
   shows model download progress.
+- The recording panel has no live transcript or square backing around its rounded corners.
+  Check light/dark desktop backgrounds, Retina scaling, Reduce Motion, Increase Contrast,
+  and Reduce Transparency. The ribbon expands with speech, settles during silence, and
+  stops moving with “Microphone interrupted” if audio buffers stop arriving. All selected
+  language codes, elapsed time, Return/click, and Esc remain usable.
+- Mixing defaults off and its saved setting survives relaunch. With Portuguese and English
+  selected, compare enabled/disabled for “Preciso fazer o deploy hoje”, “Send the pull request
+  por favor”, longer language switches, single borrowed words, names, and monolingual speech.
+  Also try three languages, a silent recording, and stopping mid-word. Verify no repeated or
+  missing words at language boundaries and no translation of foreign expressions.
 - If changing shortcuts, check enabling and disabling the mic key, a login with the
   remap enabled, and preservation of unrelated `hidutil` mappings.
 

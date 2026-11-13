@@ -27,6 +27,9 @@ jobs:
       - name: Build app
         run: scripts/build.sh --no-install
 
+      - name: Check transcript alignment
+        run: scripts/test.sh
+
       - name: Verify bundle
         run: |
           plutil -lint build/Phaedrus.app/Contents/Info.plist

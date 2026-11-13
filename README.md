@@ -18,6 +18,8 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 
 - **On-device.** Uses Apple's `SpeechAnalyzer` / `SpeechTranscriber` (macOS 26). No cloud service, no API key, no subscription. Your audio never leaves the Mac.
 - **Optional language detection.** Starts with English (US). Select up to three languages in settings to listen in all of them and keep the transcript that fits best.
+- **Experimental language mixing.** Optionally combine words from the selected languages in one dictation, without translating them. This runs on-device and is off by default.
+- **Quiet recording UI.** A smooth colored ribbon responds to microphone input, with elapsed time and all selected language codes. No distracting live transcript.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
 - **Stays out of the way.** No Dock icon and no menu-bar item. It starts when you press the key and quits after 15 idle minutes.
 
@@ -63,8 +65,8 @@ Then open Phaedrus's settings and configure your shortcut as above.
 ## Use
 
 1. Click into a text field.
-2. Press **🎤**. A bubble with a pulsing red dot appears and you hear a *tink*.
-3. Speak. The bubble shows a live preview.
+2. Press **🎤**. A rounded recording panel appears and you hear a *tink*.
+3. Speak. The colored ribbon responds to microphone input; a timer confirms the session is running. Text stays hidden until you finish. If audio buffers stop arriving, the panel says **Microphone interrupted**.
 4. To stop, press **🎤** again, press **Return**, click the bubble, or stay quiet for 3 seconds.
    **Esc** cancels, also while the bubble still says "Starting…".
 
@@ -82,6 +84,7 @@ Open **Phaedrus** from Spotlight or Finder:
 |---|---|
 | Shortcut: 🎤 key, or any shortcut | 🎤 key off until you enable it |
 | Languages (up to 3) | English (US) |
+| Mix languages in one dictation (experimental) | off |
 | Stop after silence | 3 s |
 | Give up if nothing is heard | 10 s |
 | Longest dictation | 5 min (up to 15) |
@@ -91,6 +94,22 @@ Open **Phaedrus** from Spotlight or Finder:
 The settings are stored in the `io.github.venzellucas.phaedrus` defaults domain.
 The language default applies to fresh installs; updating preserves your saved selection.
 To switch an existing install to English only, deselect the other languages in settings.
+
+### Mixing Portuguese and English
+
+Select Portuguese and English, then enable **Mix languages in one dictation (experimental)**.
+For example, the intended result for “Preciso fazer o deploy hoje” keeps “deploy” in English.
+With mixing disabled, the best whole-recording transcript still wins.
+
+Mixing aligns finalized words by their audio timestamps and replaces short spans only when
+another language has substantially higher confidence and covers the same speech. Missing
+timing, incomplete results, or ambiguous matches retain the original transcript. It does
+not translate or use a language model to rewrite what you said.
+
+This is a conservative heuristic, not guaranteed bilingual recognition. The language models'
+confidence scores may disagree even when both are wrong; borrowed words, names, and rapid
+switches still need testing with real speech. If you pause to find a word, increasing **Stop
+after silence** can help avoid finishing the recording too soon.
 
 ## Privacy
 
@@ -104,8 +123,10 @@ To switch an existing install to English only, deselect the other languages in s
 
 | File | What it does |
 |---|---|
-| `Sources/Engine.swift` | Microphone → `AVAudioEngine` → one `SpeechAnalyzer` with a `SpeechTranscriber` per language. The language with the highest mean word confidence wins. Auto-stop combines the microphone level (against an adaptive noise floor) with transcription activity. |
-| `Sources/App.swift` | The Service entry point, the floating bubble, temporary global keys and the session loop. The keys use Carbon `RegisterEventHotKey`, which needs no permission, and are registered only while a session runs. |
+| `Sources/Engine.swift` | Microphone → `AVAudioEngine` → one `SpeechAnalyzer` with a `SpeechTranscriber` per language. The highest-confidence transcript is the baseline; optional mixing uses finalized timed words. Auto-stop combines microphone level with transcription activity. |
+| `Sources/TranscriptMerger.swift` | Conservative alignment and confidence-based replacement of spans across languages. Incomplete or misaligned alternatives leave the baseline intact. |
+| `Sources/HUD.swift` | Rounded recording panel, microphone-driven ribbon, elapsed time, and listening/finishing/error states. Respects Reduce Motion and Increase Contrast. |
+| `Sources/App.swift` | The Service entry point, temporary global keys and the session loop. The keys use Carbon `RegisterEventHotKey`, which needs no permission, and are registered only while a session runs. |
 | `Sources/SettingsView.swift` | The SwiftUI settings window. |
 | `scripts/mic-key.sh` | `on`/`off`: remaps the 🎤 key (HID usage `0xC000000CF`) to F18 with `hidutil` and installs a LaunchAgent that re-applies it at login. Bundled in the app and used by the settings toggle. |
 | `scripts/make-icon.swift` | Draws the icon, a black-figure Greek pottery style. `scripts/make-icon.sh` rebuilds `Resources/AppIcon.icns`. |
@@ -134,7 +155,7 @@ and the microphone permission. If you delete the app by hand, run `scripts/mic-k
 
 ## Limitations
 
-- Each dictation is transcribed in one language. Mixing languages within a sentence won't work well.
+- Mixed-language dictation is experimental and off by default. It can improve switches only when one of the selected recognizers supplies better words with usable timing; it cannot recover words that every recognizer misses.
 - The app is ad-hoc signed and built from source. After a rebuild, macOS may ask for microphone access again.
 
 ## Contributing

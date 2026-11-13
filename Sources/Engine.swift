@@ -1,9 +1,9 @@
-// Engine.swift: on-device transcription with automatic language choice.
+// Engine.swift: on-device transcription with optional mixed-language fusion.
 //
 // One SpeechAnalyzer runs one SpeechTranscriber per configured language on the
 // same microphone audio. When recording stops, the language whose words have the
-// highest mean confidence wins. Everything runs locally; only the speech models
-// are downloaded from Apple, once per language.
+// highest mean confidence is the baseline. Experimental mixing can replace
+// aligned spans using other languages' finalized words. Everything runs locally.
 //
 // Threading: `start`, `stop` and `abort` are never called concurrently. The
 // Controller only calls `stop` after `start` returned, and only calls `abort`
@@ -11,6 +11,7 @@
 // result readers is guarded by `lock`.
 
 import AVFoundation
+import CoreMedia
 import Foundation
 import Speech
 
@@ -21,7 +22,8 @@ struct PhaedrusError: LocalizedError {
 }
 
 final class DictationEngine: @unchecked Sendable {
-    struct Outcome { let text: String; let locale: Locale; let confidence: Double }
+    struct Outcome { let text: String; let localeIDs: [String]; let confidence: Double }
+    struct AudioActivity { let level: Double; let lastBuffer: Date? }
 
     /// What `start` is currently doing (shown in the HUD; used by the startup watchdog).
     enum Phase { case permission, download, preparing, running }
@@ -35,6 +37,9 @@ final class DictationEngine: @unchecked Sendable {
         var confSum = 0.0, confCount = 0           // finalized words
         var volConfSum = 0.0, volConfCount = 0     // current volatile words
         var lastUpdate = Date.distantPast
+        var finalWords: [TranscriptMerger.Word] = []
+        var timingComplete = true
+        var readerFailed = false
         var reader: Task<Void, Error>?
 
         init(locale: Locale) {
@@ -43,7 +48,7 @@ final class DictationEngine: @unchecked Sendable {
                 locale: locale,
                 transcriptionOptions: [],
                 reportingOptions: [.volatileResults],
-                attributeOptions: [.transcriptionConfidence])
+                attributeOptions: [.transcriptionConfidence, .audioTimeRange])
         }
 
         /// Mean word confidence over finalized and volatile words.
@@ -68,9 +73,9 @@ final class DictationEngine: @unchecked Sendable {
     private var _lastVoice = Date()
     private var _heardSomething = false
     private var noiseFloorDB: Float?
-
-    /// Called on a background thread with the current best-guess preview text.
-    var onPreview: (@Sendable (String) -> Void)?
+    private var _audioLevel = 0.0
+    private var _lastAudioBuffer: Date?
+    private var mixLanguages = false
 
     var phase: Phase { lock.withLock { _phase } }
     /// Fraction of the model download, while `phase == .download`.
@@ -81,10 +86,14 @@ final class DictationEngine: @unchecked Sendable {
     var activityDetail: (text: Date, voice: Date) { lock.withLock { (_lastText, _lastVoice) } }
     /// True once any text has been recognized.
     var heardSomething: Bool { lock.withLock { _heardSomething } }
+    var audioActivity: AudioActivity {
+        lock.withLock { AudioActivity(level: _audioLevel, lastBuffer: _lastAudioBuffer) }
+    }
 
     // MARK: start
 
-    func start(localeIDs: [String]) async throws {
+    func start(localeIDs: [String], mixLanguages: Bool = false) async throws {
+        self.mixLanguages = mixLanguages
         guard SpeechTranscriber.isAvailable else { throw PhaedrusError("On-device speech is not available on this Mac") }
         guard await AVCaptureDevice.requestAccess(for: .audio) else {
             throw PhaedrusError("Microphone access denied. Allow it in System Settings → Privacy & Security → Microphone")
@@ -106,6 +115,8 @@ final class DictationEngine: @unchecked Sendable {
             _lastActivity = Date(); _lastText = Date(); _lastVoice = Date()
             _heardSomething = false
             noiseFloorDB = nil
+            _audioLevel = 0
+            _lastAudioBuffer = nil
         }
 
         let installed = Set(await SpeechTranscriber.installedLocales.map(\.identifier))
@@ -177,6 +188,12 @@ final class DictationEngine: @unchecked Sendable {
             var floor = noiseFloorDB ?? db
             floor = db < floor ? db : floor + 0.1
             noiseFloorDB = floor
+            _lastAudioBuffer = Date()
+            // Meter the microphone independently of text results. A quiet input
+            // stays calm; actual voice energy expands the ribbon smoothly.
+            let relative = max(0, (db - max(-60, floor + 3)) / 30)
+            let absolute = max(0, (db + 60) / 45) * 0.25
+            _audioLevel = Double(min(1, max(relative, absolute)))
             if db > floor + 10 && db > -55 {
                 _lastVoice = Date()
                 _lastActivity = Date()
@@ -192,12 +209,17 @@ final class DictationEngine: @unchecked Sendable {
         for run in r.text.runs {
             if let c = run.transcriptionConfidence { sum += c; count += 1 }
         }
-        let preview: String = lock.withLock {
+        let words = r.isFinal && mixLanguages ? Self.timedWords(r.text) : nil
+        lock.withLock {
             if r.isFinal {
                 t.finalText += s
                 t.volatileText = ""
                 t.confSum += sum; t.confCount += count
                 t.volConfSum = 0; t.volConfCount = 0
+                if mixLanguages {
+                    if let words { t.finalWords.append(contentsOf: words) }
+                    else { t.timingComplete = false }
+                }
             } else {
                 t.volatileText = s
                 t.volConfSum = sum; t.volConfCount = count
@@ -208,15 +230,39 @@ final class DictationEngine: @unchecked Sendable {
                 _lastActivity = Date()
                 _heardSomething = true
             }
-            return leader()?.text ?? ""
         }
         dlog("result \(t.locale.identifier) final=\(r.isFinal) chars=\(s.count)")
-        onPreview?(preview)
+    }
+
+    /// Preserve every character, including whitespace and punctuation runs that
+    /// have no timing of their own. Missing timing/confidence on spoken text makes
+    /// this track unsuitable for fusion; its ordinary transcript still works.
+    private static func timedWords(_ text: AttributedString) -> [TranscriptMerger.Word]? {
+        var words: [TranscriptMerger.Word] = []
+        var prefix = ""
+        for run in text.runs {
+            let fragment = String(text[run.range].characters)
+            let hasWord = fragment.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
+            guard hasWord else {
+                if words.isEmpty { prefix += fragment }
+                else { words[words.count - 1].text += fragment }
+                continue
+            }
+            guard let range = run.audioTimeRange, let confidence = run.transcriptionConfidence else { return nil }
+            let start = CMTimeGetSeconds(range.start)
+            let end = CMTimeGetSeconds(CMTimeRangeGetEnd(range))
+            guard start.isFinite, end.isFinite, end > start, confidence.isFinite else { return nil }
+            words.append(.init(text: prefix + fragment, start: start, end: end, confidence: confidence))
+            prefix = ""
+        }
+        // A punctuation-only final result can be preserved by the fallback, but
+        // must not silently disappear from a fused transcript.
+        return prefix.isEmpty ? words : nil
     }
 
     /// The language currently winning. Caller must hold `lock`.
     private func leader() -> Track? {
-        tracks.max { a, b in
+        tracks.filter { !$0.readerFailed && !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.max { a, b in
             a.confidence != b.confidence ? a.confidence < b.confidence : a.lastUpdate < b.lastUpdate
         }
     }
@@ -246,12 +292,31 @@ final class DictationEngine: @unchecked Sendable {
             return nil
         }
         try await analyzer.finalizeAndFinishThroughEndOfInput()
-        for t in tracks { _ = try? await t.reader?.value }
+        var readerError: Error?
+        for t in tracks {
+            do { try await t.reader?.value }
+            catch {
+                readerError = error
+                lock.withLock { t.readerFailed = true }
+            }
+        }
+        if let readerError, lock.withLock({ tracks.allSatisfy(\.readerFailed) }) { throw readerError }
 
         return lock.withLock {
             guard let best = leader() else { return nil }
             let text = best.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            return text.isEmpty ? nil : Outcome(text: text, locale: best.locale, confidence: best.confidence)
+            guard !text.isEmpty else { return nil }
+            if mixLanguages, best.timingComplete, best.volatileText.isEmpty {
+                func transcript(_ t: Track) -> TranscriptMerger.Transcript {
+                    .init(localeID: t.locale.identifier, text: t.finalText, words: t.finalWords)
+                }
+                let alternatives = tracks.filter {
+                    $0 !== best && !$0.readerFailed && $0.timingComplete && $0.volatileText.isEmpty
+                }.map(transcript)
+                let result = TranscriptMerger.merge(primary: transcript(best), alternatives: alternatives)
+                return Outcome(text: result.text, localeIDs: result.localeIDs, confidence: best.confidence)
+            }
+            return Outcome(text: text, localeIDs: [best.locale.identifier], confidence: best.confidence)
         }
     }
 
