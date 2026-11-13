@@ -21,29 +21,37 @@ if (navigator.clipboard && window.isSecureContext) {
 }
 
 const playButton = document.querySelector("#play-demo");
-const demo = document.querySelector(".demo");
 const demoText = document.querySelector("#demo-text");
 const demoStatus = document.querySelector("#demo-status");
-const example = demoText.textContent;
+const recordingPreview = document.querySelector("#recording-preview");
+const example = demoText.textContent.trim();
+const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+let finishTimer;
+let playing = false;
+
+function finishPreview(stopped = false) {
+  clearTimeout(finishTimer);
+  playing = false;
+  recordingPreview.src = "media/listening.png";
+  demoText.textContent = example;
+  demoStatus.textContent = stopped ? "Preview stopped." : "Example complete. Text appears when dictation finishes.";
+  playButton.textContent = "Play recording ↻";
+}
+
 playButton.hidden = false;
 playButton.addEventListener("click", () => {
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    demoText.textContent = example;
-    demoStatus.textContent = "Example complete.";
-    return;
-  }
-  playButton.disabled = true;
-  demo.classList.add("is-playing");
-  demoStatus.textContent = "Listening…";
+  if (playing) { finishPreview(true); return; }
+  if (reducedMotion.matches) { finishPreview(); return; }
+  playing = true;
   demoText.textContent = "";
-  let character = 0;
-  const timer = setInterval(() => {
-    demoText.textContent = example.slice(0, ++character);
-    if (character >= example.length) {
-      clearInterval(timer);
-      demo.classList.remove("is-playing");
-      demoStatus.textContent = "A thought, put into words.";
-      playButton.disabled = false;
-    }
-  }, 48);
+  demoStatus.textContent = "Recording preview playing. No microphone is used.";
+  playButton.textContent = "Stop preview";
+  recordingPreview.src = "media/listening-live.gif";
+  finishTimer = setTimeout(() => finishPreview(), 8000);
+});
+reducedMotion.addEventListener("change", () => {
+  if (reducedMotion.matches && playing) finishPreview(true);
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && playing) finishPreview(true);
 });

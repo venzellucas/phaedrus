@@ -151,6 +151,20 @@ or `docs/site.js`; no build tools or dependencies are needed. Preview locally wi
 Check both a narrow phone layout and a desktop layout, keyboard navigation, the example,
 and the copy button. Keep installation details consistent with the README.
 
+## Branches and releases
+
+`main` requires a pull request and the **macOS build and tests** check against the latest
+base branch. Direct pushes, force pushes, and deletion are blocked, with no administrator
+bypass. Human approval is not mandatory, so a solo maintainer can still merge a green PR.
+Create a short-lived feature branch for each change; merged branches are deleted.
+
+To publish, update both version fields in `Resources/Info.plist` in a PR and pass the checks.
+After merging, download the verified app ZIP from the successful `main` Build run for that
+exact merge commit. Publish a version tag and GitHub release on that commit, attach
+`Phaedrus-macOS-arm64.zip` and `SHA256SUMS.txt`, and retain the ad-hoc signing/first-launch
+instructions. Verify the public download checksum and the Pages deployment before closing
+out the release. The website and README use the latest release's stable download URL.
+
 ## Bug reports and pull requests
 
 Include your macOS version, Mac model, selected languages, target app, steps to reproduce,

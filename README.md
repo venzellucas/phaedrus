@@ -5,7 +5,7 @@
 <p align="center"><b>Press 🎤, speak, and your words appear at the cursor in any Mac app.<br>
 Speech recognition runs entirely on your Mac.</b></p>
 
-<p align="center"><a href="https://venzellucas.github.io/phaedrus/">Website &amp; installation guide</a></p>
+<p align="center"><a href="https://github.com/venzellucas/phaedrus/releases/latest/download/Phaedrus-macOS-arm64.zip">Download for Apple silicon</a> · <a href="https://venzellucas.github.io/phaedrus/">Website &amp; installation guide</a> · <a href="https://github.com/venzellucas/phaedrus/releases/latest">Release notes</a></p>
 
 > …writing is unfortunately like painting; for the creations of the painter have the attitude
 > of life, and yet if you ask them a question they preserve a solemn silence.
@@ -25,12 +25,32 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
 - **Stays out of the way.** No Dock icon and no menu-bar item. It starts when you press the key and quits after 15 idle minutes.
 
+<p align="center"><img src="docs/media/listening.png" width="420" alt="Native recording panel with a microphone-driven ribbon, timer, and all selected languages"></p>
+
 ## Requirements
 
-- macOS 26 (Tahoe) or later
-- Xcode Command Line Tools with the macOS 26 SDK or later (`xcode-select --install`)
+- macOS 26 (Tahoe) or later; the published app is built for Apple silicon.
+- Smart cleanup optionally requires a compatible Mac with Apple Intelligence enabled.
+- Building from source requires Xcode Command Line Tools with the macOS 26 SDK or later.
 
 ## Install
+
+### Download the app
+
+[Download Phaedrus for Apple silicon](https://github.com/venzellucas/phaedrus/releases/latest/download/Phaedrus-macOS-arm64.zip).
+[Release notes and SHA-256 checksum](https://github.com/venzellucas/phaedrus/releases/latest) accompany each published version.
+
+Extract the ZIP, quit any running copy (`pkill -x Phaedrus` in Terminal), and move
+`Phaedrus.app` into `~/Applications` before opening it. Updating preserves your settings.
+
+The app is **ad-hoc signed, not notarized**. macOS may block the first launch;
+if you trust the download, follow Apple's
+[Open Anyway instructions](https://support.apple.com/en-us/102445)
+in System Settings → Privacy & Security. Managed Macs may restrict this option.
+
+### Build from source
+
+Install the Command Line Tools with `xcode-select --install`, then:
 
 ```sh
 git clone https://github.com/venzellucas/phaedrus.git
@@ -39,30 +59,20 @@ scripts/build.sh                  # builds and installs ~/Applications/Phaedrus.
 open ~/Applications/Phaedrus.app  # opens the settings
 ```
 
-In **Shortcuts & access**, turn on **Use the 🎤 key to dictate**. This makes the 🎤 key (F5 on
-Mac laptops) send F18, binds F18 to Phaedrus, and keeps the remap after restarts. Other
-key remaps you have made with `hidutil` are kept.
+### Set up your shortcut
+
+In **Shortcuts & access**, turn on **Use the 🎤 key to dictate**. This makes the 🎤 key
+(F5 on Mac laptops) send F18, binds F18 to Phaedrus, and keeps the remap after restarts.
+Other key remaps you have made with `hidutil` are kept.
 
 If your keyboard has no 🎤 key, click **Change shortcut in System Settings…** and give
-**Keyboard Shortcuts → Services → Text → Dictate with Phaedrus** any shortcut you like.
+**Keyboard Shortcuts → Services → Text → Dictate with Phaedrus** a shortcut.
+The first dictation asks for microphone access. Each language's speech model downloads
+from Apple once; the panel shows download progress.
 
-The first dictation asks for microphone access. Each language's speech model is downloaded
-from Apple once; the bubble shows the download progress.
-
-### Download a test build
-
-For **Apple silicon Macs running macOS 26 or later**, the latest successful
-[Build workflow](https://github.com/venzellucas/phaedrus/actions/workflows/build.yml)
-on `main` includes a `Phaedrus-macOS-arm64.zip` download under **Artifacts**.
-Sign in to GitHub to download it; test builds expire after 30 days.
-
-Extract the ZIP and move `Phaedrus.app` into `~/Applications` before opening it.
-If Phaedrus is already running, stop it first (`pkill -x Phaedrus` in Terminal).
-These builds are **ad-hoc signed, not notarized**. macOS may block the first launch;
-if you trust the download, follow Apple's
-[Open Anyway instructions](https://support.apple.com/en-us/102445)
-in System Settings → Privacy & Security. Managed Macs may restrict this option.
-Then open Phaedrus's settings and configure your shortcut as above.
+Development snapshots are also available under **Artifacts** in the
+[Build workflow](https://github.com/venzellucas/phaedrus/actions/workflows/build.yml).
+These require GitHub sign-in and expire after 30 days; published releases do not expire automatically.
 
 ## Use
 
