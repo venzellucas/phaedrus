@@ -91,7 +91,7 @@ enum SessionSettingsTests {
     }
 
     static func run(_ scenario: Scenario) {
-        var preferences: [String: Any] = ["locales": ["en_US"], "playSounds": false,
+        let preferences: [String: Any] = ["locales": ["en_US"], "playSounds": false,
             "smartCleanup": false, "mixLanguages": false, "silenceSeconds": 0.1,
             "noSpeechSeconds": 0.6, "maxSeconds": scenario == .timeBudget ? 1.4 : 30.0]
         Prefs.d.setVolatileDomain(preferences, forName: "NSArgumentDomain")
@@ -148,8 +148,9 @@ enum SessionSettingsTests {
                     case .finish: controls.action = .finish
                     case .cancel: HotKeys.handler?(.cancel)
                     default:
-                        preferences["locales"] = ["pt_BR", "en_US"]
-                        Prefs.d.setVolatileDomain(preferences, forName: "NSArgumentDomain")
+                        var updated = Prefs.d.volatileDomain(forName: "NSArgumentDomain")
+                        updated["locales"] = ["pt_BR", "en_US"]
+                        Prefs.d.setVolatileDomain(updated, forName: "NSArgumentDomain")
                         window.performClose(nil) // closing settings resumes
                     }
                     stage = 2
