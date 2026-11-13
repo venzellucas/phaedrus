@@ -43,7 +43,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: recording-panel-previews
-          path: build/hud-previews/*.png
+          path: |
+            build/hud-previews/*.png
+            build/hud-previews/*.gif
           if-no-files-found: error
           retention-days: 30
 

@@ -1,5 +1,5 @@
-// A quiet recording surface. The ribbon is an activity indicator, not a plot of
-// the microphone waveform. Its energy follows real input; its shape stays fluid.
+// A quiet recording surface. While listening, the ribbon shows a short history
+// of the real microphone meter. It indicates audio input, not recognition accuracy.
 
 import AppKit
 import QuartzCore
@@ -47,8 +47,7 @@ final class HUD {
         surface.title.stringValue = text
         surface.title.toolTip = text
         surface.clock.stringValue = ""
-        surface.targetLevel = 0
-        surface.inputAvailable = false
+        surface.resetAudio()
         surface.updateLabels()
         if !panel.isVisible {
             let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
@@ -80,7 +79,8 @@ final class HUD {
         let title = available || elapsed < 0.6 ? "Listening" : "Microphone interrupted"
         if surface.title.stringValue != title { surface.title.stringValue = title }
         let seconds = max(0, Int(elapsed))
-        surface.clock.stringValue = String(format: "%d:%02d", seconds / 60, seconds % 60)
+        let time = String(format: "%d:%02d", seconds / 60, seconds % 60)
+        if surface.clock.stringValue != time { surface.clock.stringValue = time }
     }
 
     func hide() {
@@ -100,9 +100,11 @@ private final class RecordingSurface: NSView {
     var languageText = ""
     var languageDescription = ""
     var targetLevel: Double = 0
-    var inputAvailable = false
+    var inputAvailable = false {
+        didSet { if inputAvailable != oldValue { needsDisplay = true } }
+    }
     var onClick: (() -> Void)?
-    private var level = 0.0
+    private var ribbon = AudioRibbon()
     private var phase = 0.0
     private var lastTick = CACurrentMediaTime()
 
@@ -167,18 +169,29 @@ private final class RecordingSurface: NSView {
         title.lineBreakMode = mode == .error ? .byWordWrapping : .byTruncatingTail
     }
 
+    func resetAudio() {
+        targetLevel = 0
+        inputAvailable = false
+        ribbon.reset()
+        lastTick = CACurrentMediaTime()
+        phase = 0
+    }
+
     func tick() {
         let now = CACurrentMediaTime()
         let dt = min(max(now - lastTick, 0), 0.1)
         lastTick = now
-        let rate = targetLevel > level ? 12.0 : 4.0
-        level += (targetLevel - level) * (1 - exp(-dt * rate))
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        // An interrupted microphone gets a still ribbon, never a fake signal.
-        if !reduced && mode != .paused && (mode != .listening || inputAvailable) {
-            phase += dt * (mode == .listening ? 1.6 : 0.8)
+        if mode == .listening && inputAvailable {
+            let wasQuiet = ribbon.isQuiet
+            ribbon.advance(target: targetLevel, delta: dt)
+            if !wasQuiet || !ribbon.isQuiet { needsDisplay = true }
+        } else if !reduced && (mode == .preparing || mode == .transcribing) {
+            // A decorative progress wave belongs only to non-recording states.
+            phase += dt * 0.8
+            needsDisplay = true
         }
-        needsDisplay = true
+        // A flat silent ribbon, a pause, and an interrupted input need no redraw.
     }
 
     private var silhouette: NSBezierPath {
@@ -215,25 +228,40 @@ private final class RecordingSurface: NSView {
 
     private func drawRibbon() {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let energy = mode == .listening ? level : (mode == .paused ? 0 : 0.18)
-        let amplitude = reduced ? 3.0 : 2.5 + energy * 8.5
+        let listening = mode == .listening
         let colors = PhaedrusTheme.ribbonColors
-        for ribbon in 0..<3 {
+        let interrupted = listening && !inputAvailable
+        for layer in 0..<3 {
             let path = NSBezierPath()
-            let offset = Double(ribbon) * 1.4
-            let thickness = (ribbon == 0 ? 2.2 : 1.2) + energy * 1.4
             func point(_ step: Int, _ edge: Double) -> NSPoint {
-                let x = Double(step) / 80
-                let envelope = pow(sin(.pi * x), 1.4)
-                let wave = sin(x * .pi * 2.2 - phase + offset) * 0.7
-                    + sin(x * .pi * 3.4 + phase * 0.7 + offset) * 0.3
-                return NSPoint(x: 34 + x * 352, y: 59 + envelope * (wave * amplitude + edge * thickness))
+                let x = Double(step) / 120
+                // Fade just the ends, so new speech is visible near the right edge.
+                let ends = min(1, min(x, 1 - x) / 0.08)
+                let taper = ends * ends * (3 - 2 * ends)
+                let height: Double
+                let center: Double
+                if listening {
+                    // Reduce Motion gets a stationary, symmetric level indicator;
+                    // level changes remain visible without a traveling waveform.
+                    let amplitude = reduced ? ribbon.level * pow(sin(.pi * x), 2) : ribbon.amplitude(at: x)
+                    height = 0.65 + amplitude * (14.0 - Double(layer) * 3.5)
+                    center = 59
+                } else {
+                    let envelope = pow(sin(.pi * x), 1.4)
+                    let wave = reduced || mode == .paused ? 0
+                        : sin(x * .pi * 2.2 - phase + Double(layer) * 1.4)
+                    center = 59 + envelope * wave * 3.5
+                    height = mode == .paused ? 0.65 : 1.3
+                }
+                return NSPoint(x: 34 + x * 352, y: center + edge * height * taper)
             }
             path.move(to: point(0, 1))
-            for step in 1...80 { path.line(to: point(step, 1)) }
-            for step in (0...80).reversed() { path.line(to: point(step, -1)) }
+            for step in 1...120 { path.line(to: point(step, 1)) }
+            for step in (0...120).reversed() { path.line(to: point(step, -1)) }
             path.close()
-            let opacity = mode == .listening && !inputAvailable ? 0.25 : (ribbon == 0 ? 0.95 : 0.35)
+            // Layer the same measured envelope; never add decorative oscillation
+            // to a silent or interrupted microphone.
+            let opacity = interrupted ? 0.15 : (layer == 0 ? 0.35 : (layer == 1 ? 0.55 : 0.95))
             NSGradient(colors: colors.map { $0.withAlphaComponent(opacity) })?.draw(in: path, angle: 0)
         }
     }

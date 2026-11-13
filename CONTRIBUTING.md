@@ -58,9 +58,14 @@ real native views with synthetic data, not screenshots of a web mockup. Inspect 
 open build/hud-previews/settings-languages-light.png
 open build/hud-previews/settings-cleanup-dark.png
 open build/hud-previews/listening.png
+open build/hud-previews/listening-live.gif
 ```
 
-The CI preview artifact includes these images plus the native session-test captures.
+The CI preview artifact includes these images, a native animated GIF fed with synthetic
+syllables and silence, and the native session-test captures. The listening ribbon keeps
+90 meter values (about three seconds) and uses the existing microphone measurement;
+it does not retain PCM audio or run another recognition model. Its timer stays at 30 fps.
+The GIF demonstrates visual behavior, not microphone latency or battery usage.
 
 ## Manual checks
 
@@ -94,8 +99,11 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   shows model download progress.
 - The recording panel has no live transcript or square backing around its rounded corners.
   Check light/dark desktop backgrounds, Retina scaling, Reduce Motion, Increase Contrast,
-  and Reduce Transparency. The ribbon expands with speech, settles during silence, and
-  stops moving with “Microphone interrupted” if audio buffers stop arriving. All selected
+  and Reduce Transparency. Distinct syllables should form smooth peaks entering from the
+  right and moving left, with pauses between them; after three seconds of silence the
+  trail should become flat. New recordings and resumed segments must start with an empty
+  trail. Reduce Motion replaces the traveling history with a stationary level indicator.
+  The ribbon stops moving with “Microphone interrupted” if audio buffers stop arriving. All selected
   language codes, elapsed time, Return/click, and Esc remain usable.
 - Mixing defaults off and its saved setting survives relaunch. With Portuguese and English
   selected, compare enabled/disabled for “Preciso fazer o deploy hoje”, “Send the pull request

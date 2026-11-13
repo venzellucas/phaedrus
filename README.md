@@ -20,7 +20,7 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 - **Optional language detection.** Starts with English (US). Select up to three languages in settings to listen in all of them and keep the transcript that fits best.
 - **Experimental language mixing.** Optionally combine words from the selected languages in one dictation, without translating them. This runs on-device and is off by default.
 - **Optional Smart cleanup.** Apple Intelligence chooses recognized alternatives using sentence context. Natural removes spoken repetitions and fillers; Written also corrects grammar, spelling, and likely recognition mistakes. Runs on-device, with a time limit and automatic fallback. Off by default.
-- **Quiet recording UI.** A smooth colored ribbon responds to microphone input, with elapsed time and all selected language codes. No distracting live transcript.
+- **Quiet recording UI.** A smooth colored ribbon shows the last three seconds of microphone intensity, with elapsed time and all selected language codes. No distracting live transcript.
 - **Change languages while dictating.** Press ⌘, to pause and open Settings. Resume with new languages while keeping your earlier words.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
 - **Stays out of the way.** No Dock icon and no menu-bar item. It starts when you press the key and quits after 15 idle minutes.
@@ -68,7 +68,7 @@ Then open Phaedrus's settings and configure your shortcut as above.
 
 1. Click into a text field.
 2. Press **🎤**. A rounded recording panel appears and you hear a *tink*.
-3. Speak. The colored ribbon responds to microphone input; a timer confirms the session is running. Text stays hidden until you finish. If audio buffers stop arriving, the panel says **Microphone interrupted**.
+3. Speak. The colored ribbon follows your microphone level from right to left, with a short trail of recent speech and pauses; a timer confirms the session is running. Text stays hidden until you finish. If audio buffers stop arriving, the panel says **Microphone interrupted**.
 4. To stop, press **🎤** again, press **Return**, click the bubble, or stay quiet for 3 seconds.
    **Esc** cancels, also while the bubble still says "Starting…".
 

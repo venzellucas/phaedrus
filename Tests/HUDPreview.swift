@@ -2,6 +2,8 @@
 // microphone or invoking the speech engine. Used to inspect UI changes in CI.
 import AppKit
 import SwiftUI
+import ImageIO
+import UniformTypeIdentifiers
 
 @main
 @MainActor
@@ -26,10 +28,12 @@ enum HUDPreview {
         ]
         for (name, mode, title, level) in states {
             hud.show(mode, title)
-            let end = Date().addingTimeInterval(0.7)
+            let start = Date()
+            let end = start.addingTimeInterval(name == "listening" ? 2.7 : 0.7)
             while Date() < end {
                 if let level {
-                    hud.updateAudio(.init(level: max(0, level), lastBuffer: level < 0 ? nil : Date()), elapsed: 42)
+                    let input = name == "listening" ? speechLevel(at: Date().timeIntervalSince(start)) : max(0, level)
+                    hud.updateAudio(.init(level: input, lastBuffer: level < 0 ? nil : Date()), elapsed: 42)
                 }
                 RunLoop.current.run(until: Date().addingTimeInterval(1.0 / 30))
             }
@@ -43,9 +47,56 @@ enum HUDPreview {
             }
             try data.write(to: directory.appendingPathComponent(name + ".png"))
         }
+        try liveRibbonPreview(hud: hud, in: directory)
         hud.hide()
         if let icon = NSImage(contentsOfFile: "docs/icon.png") { app.applicationIconImage = icon }
         try settingsPreviews(in: directory)
+    }
+
+    /// Synthetic syllables separated by silence, so the preview can establish
+    /// that the picture follows the supplied levels instead of a decorative sine.
+    static func speechLevel(at time: Double) -> Double {
+        let pulses: [(Double, Double, Double)] = [
+            (0.65, 0.10, 0.55), (0.95, 0.08, 0.90), (1.20, 0.07, 0.60),
+            (1.60, 0.12, 1.00), (2.12, 0.09, 0.70), (2.40, 0.10, 0.45),
+            (3.25, 0.08, 0.60), (3.55, 0.14, 0.95), (3.95, 0.10, 0.65)
+        ]
+        return min(1, pulses.reduce(0.0) { level, pulse in
+            let distance = (time - pulse.0) / pulse.1
+            return level + pulse.2 * exp(-0.5 * distance * distance)
+        })
+    }
+
+    /// Export real AppKit frames as a GIF; no generated artwork or microphone.
+    static func liveRibbonPreview(hud: HUD, in directory: URL) throws {
+        let frames = 150
+        let interval = 0.05
+        let url = directory.appendingPathComponent("listening-live.gif")
+        guard let gif = CGImageDestinationCreateWithURL(url as CFURL, UTType.gif.identifier as CFString, frames, nil) else {
+            throw PhaedrusError("Could not create the recording animation preview")
+        }
+        CGImageDestinationSetProperties(gif, [kCGImagePropertyGIFDictionary:
+            [kCGImagePropertyGIFLoopCount: 0]] as CFDictionary)
+        hud.show(.listening, "Listening")
+        let start = Date()
+        for frame in 0..<frames {
+            let end = start.addingTimeInterval(Double(frame + 1) * interval)
+            let time = Date().timeIntervalSince(start)
+            // The real Service supplies meter updates roughly every 50 ms too.
+            hud.updateAudio(.init(level: speechLevel(at: time), lastBuffer: Date()), elapsed: time)
+            repeat {
+                RunLoop.current.run(until: Date().addingTimeInterval(1.0 / 60))
+            } while Date() < end
+            guard let view = NSApp.windows.first(where: { $0.isVisible })?.contentView,
+                  let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+                throw PhaedrusError("Could not capture the recording animation")
+            }
+            view.cacheDisplay(in: view.bounds, to: bitmap)
+            guard let cgImage = bitmap.cgImage else { throw PhaedrusError("Recording frame is missing") }
+            CGImageDestinationAddImage(gif, cgImage, [kCGImagePropertyGIFDictionary:
+                [kCGImagePropertyGIFDelayTime: interval]] as CFDictionary)
+        }
+        guard CGImageDestinationFinalize(gif) else { throw PhaedrusError("Could not finish the recording animation") }
     }
 
     /// Render the real settings in both appearances with stable, synthetic states.
