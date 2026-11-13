@@ -177,6 +177,12 @@ and changes to detected names, numbers, negations, and technical identifiers. Th
 cannot prove that a cut preserves meaning. Natural may remove an intended word; review the
 result and switch back to Conservative when you need a closer transcript.
 
+If a rewrite is rejected, Natural can still retain model-requested cuts of adjacent,
+unpunctuated stutters such as “eu eu” or “the the”. These partial edits are reconstructed
+from the original text; unclear recognition, names, numbers, negations, and punctuated
+repetitions stay intact. Capitalized discourse markers such as “So” and “Just” are not
+automatically treated as proper names. The model still decides whether they are fillers.
+
 Both styles run entirely on the Mac; no server, API key, or separately managed model is needed.
 
 This is experimental. A contextually plausible choice can still be wrong, and the model cannot
@@ -189,7 +195,8 @@ continues to work without Apple Intelligence.
 - Audio is processed on the Mac by Apple's speech framework. Speech models are downloaded
   from Apple. Optional Smart cleanup uses Apple Intelligence's system-managed local model;
   this app never sends audio or transcripts to a cloud model.
-- Transcripts are not stored or logged. The debug log (below) records lengths and timings only.
+- Transcripts are not stored or logged. The debug log (below) records lengths, timings,
+  review style, and whether cleanup changed the text; it never includes the text itself.
 - The clipboard copy is marked for this Mac only, so Universal Clipboard does not send it to
   your other devices. Clipboard-manager apps can still record it; turn the copy off if that matters to you.
 

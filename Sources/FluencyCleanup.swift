@@ -35,7 +35,11 @@ enum FluencyCleanup {
             let response = await CleanupDeadline.run(seconds: budget) { try await rewriting(prompt) }
             guard !Task.isCancelled else { return text }
             guard let response, let rewritten = response else { break }
-            if let accepted = validated(rewritten, source: piece.text, localeIDs: localeIDs) { result[i] = accepted }
+            if let accepted = validated(rewritten, source: piece.text, localeIDs: localeIDs) {
+                result[i] = accepted
+            } else if let partial = salvagingRepetitions(rewritten, source: piece.text, localeIDs: localeIDs) {
+                result[i] = partial
+            }
         }
         return Task.isCancelled ? text : result.joined()
     }
@@ -123,12 +127,60 @@ enum FluencyCleanup {
         return output
     }
 
-    private struct Word { let text: String; let key: String }
+    /// An otherwise rejected rewrite may still identify simple stutters. Keep
+    /// only those local deletions, reconstructing from the original string. No
+    /// replacement wording or punctuation from the rejected response is used.
+    static func salvagingRepetitions(_ proposal: String, source: String, localeIDs: [String]) -> String? {
+        let original = words(source)
+        let proposed = words(proposal)
+        let originalCounts = Dictionary(grouping: original, by: \.key).mapValues(\.count)
+        let proposedCounts = Dictionary(grouping: proposed, by: \.key).mapValues(\.count)
+        let matchingWords = proposedCounts.reduce(0) { $0 + min($1.value, originalCounts[$1.key, default: 0]) }
+        guard !proposed.isEmpty, proposal.utf8.count <= source.utf8.count + 128,
+              matchingWords * 10 >= proposed.count * 7,
+              matchingWords * 5 >= original.count * 2 else { return nil }
+        var remaining = originalCounts
+        var removals: [Range<String.Index>] = []
+        var i = 0
+        while i < original.count {
+            let first = original[i]
+            var end = i + 1
+            while end < original.count, original[end].key == first.key,
+                  source[original[end - 1].range.upperBound..<original[end].range.lowerBound].allSatisfy(\.isWhitespace) {
+                end += 1
+            }
+            // A retained occurrence in the proposal is necessary evidence for
+            // collapsing a stutter. Refusals/empty text do not request deletion.
+            if stutterWords.contains(first.key), let retained = proposedCounts[first.key], retained > 0 {
+                let count = min(end - i - 1, max(0, remaining[first.key, default: 0] - retained))
+                if count > 0 {
+                    removals.append(first.range.upperBound..<original[i + count].range.upperBound)
+                    remaining[first.key, default: 0] -= count
+                }
+            }
+            i = end
+        }
+        guard !removals.isEmpty else { return nil }
+        var candidate = ""
+        var cursor = source.startIndex
+        for range in removals {
+            candidate += source[cursor..<range.lowerBound]
+            cursor = range.upperBound
+        }
+        candidate += source[cursor...]
+        return validated(candidate, source: source, localeIDs: localeIDs)
+    }
+
+    // Deliberately excludes names, numbers, negations, and intensifiers such as
+    // "very"/"muito". Punctuated repetitions ("go, go!") are also left intact.
+    private static let stutterWords = Set("i eu the a o os as de da das dos em para to and e que it we they he she is are was up go".split(separator: " ").map(String.init))
+
+    private struct Word { let text: String; let key: String; let range: Range<String.Index> }
     private static func words(_ text: String) -> [Word] {
         matches("[\\p{L}\\p{M}\\p{N}]+(?:['’][\\p{L}\\p{M}\\p{N}]+)*", in: text).compactMap { match in
             guard let range = Range(match.range, in: text) else { return nil }
             let value = String(text[range])
-            return Word(text: value, key: value.precomposedStringWithCanonicalMapping.lowercased().replacingOccurrences(of: "’", with: "'"))
+            return Word(text: value, key: value.precomposedStringWithCanonicalMapping.lowercased().replacingOccurrences(of: "’", with: "'"), range: range)
         }
     }
     private static func matches(_ pattern: String, in text: String) -> [NSTextCheckingResult] {
@@ -148,7 +200,10 @@ enum FluencyCleanup {
         return true
     }
     private static let criticalWords = Set("não nao nunca jamais nem sem só somente apenas exceto talvez no not never neither nor without unless only except maybe perhaps could might must should can't cannot won't wouldn't shouldn't couldn't isn't aren't wasn't weren't don't doesn't didn't zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion um uma dois duas três tres quatro cinco seis sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezasseis dezessete dezassete dezoito dezenove dezanove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento duzentos trezentos quatrocentos quinhentos seiscentos setecentos oitocentos novecentos mil milhão milhões bilhão bilhões uno una dos cuatro seis siete ocho nueve diez cien sin ni solo quizás".split(separator: " ").map(String.init))
-    private static let commonCapitals = fillerWords.union("a o os as eu nós nos você vocês voce voces ele ela eles elas isso isto esse essa este esta e mas ou se de do da dos das em para por que porque como quando the i we you he she it they this that these those and but or if to of for in on with please preciso quero vou vamos can is are".split(separator: " ").map(String.init))
+    // ASR often capitalizes discourse markers after a pause. Capitalization
+    // alone must not turn "So", "Yeah", or "Just" into protected names. This
+    // does not remove them automatically; the model still considers context.
+    private static let commonCapitals = fillerWords.union("a o os as eu nós nos você vocês voce voces ele ela eles elas isso isto esse essa este esta e mas ou se de do da dos das em para por que porque como quando the i we you he she it they this that these those and but or if to of for in on with please preciso quero vou vamos can is are so yeah just".split(separator: " ").map(String.init))
 
     private static func protectedWords(_ words: [Word], names: Set<String>, protectUm: Bool) -> [String] {
         var result: [String] = []

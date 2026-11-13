@@ -527,7 +527,9 @@ final class Controller: NSObject, NSApplicationDelegate {
                                 }
                             }
                             guard ready else { return }
+                            dlog("cleanup starting: style=\(cleanupStyle.rawValue)")
                             text = await cleanup(out.text, locales, out.cleanupPlan, cleanupStyle)
+                            dlog("cleanup finished: style=\(cleanupStyle.rawValue), changed=\(text != out.text)")
                         }
                         let finalText = text
                         onMainRunLoop { [weak self] in

@@ -27,6 +27,10 @@ enum FluencyCleanupTests {
             ("uh keep C++ and foo-bar today", "Keep C++ and foo-bar today."),
             ("I need the build today, you know.", "I need the build today."),
             ("É, eu, eu preciso fazer o deploy hoje.", "Eu preciso fazer o deploy hoje."),
+            ("So yeah, go go ahead and check the result.", "Go ahead and check the result."),
+            ("Just, uh, just check if the The Text is understandable.", "Check if the Text is understandable."),
+            ("Yeah, eu eu acho que funciona. Clean up up my conversation, please.", "Eu acho que funciona. Clean up my conversation, please."),
+            ("So tell Maria and João to check the result.", "Tell Maria and João to check the result."),
         ]
         for (source, output) in accepted {
             expect(FluencyCleanup.validated(output, source: source) == output, "Accept useful cleanup: \(source)")
@@ -36,6 +40,8 @@ enum FluencyCleanupTests {
             ("Não vou e não quero ir.", "Não vou e quero ir."),
             ("I might deploy today.", "I deploy today."),
             ("Tell Maria and João today.", "Tell Maria today."),
+            ("So tell Maria and João to check the result.", "Tell Maria to check the result."),
+            ("The Text Just reinal is understandable.", "The text really is understandable."),
             ("Send 15 to Maria today.", "Send 50 to Maria today."),
             ("Send 15 to Maria today.", "Send to Maria today."),
             ("Preciso de um café hoje.", "Preciso de café hoje."),
@@ -60,6 +66,30 @@ enum FluencyCleanupTests {
         }
         expect(FluencyCleanup.validated("I need the pull request today.", source: "Um, I I need the pull request today.", localeIDs: ["en_US"]) != nil,
                "English-only um can be a hesitation without removing the Portuguese article/number")
+
+        let noisy = "Eu eu acho que funciona. Clean up up m conversation. So go go had. Check if the The Text reinal is understandable."
+        let unauthorizedRewrite = "Eu acho que funciona. Clean up my conversation. Go ahead. Check if the text really is understandable."
+        let partialExpected = "Eu acho que funciona. Clean up m conversation. So go had. Check if the Text reinal is understandable."
+        expect(FluencyCleanup.validated(unauthorizedRewrite, source: noisy) == nil, "Reject inferred replacements for unclear recognition")
+        expect(FluencyCleanup.salvagingRepetitions(unauthorizedRewrite, source: noisy, localeIDs: ["pt_BR", "en_US"]) == partialExpected,
+               "Keep useful stutter cuts while preserving every uncertain word and original punctuation")
+        let partialCleanup = await FluencyCleanup.refine(noisy, localeIDs: ["pt_BR", "en_US"], seconds: 1) { _ in unauthorizedRewrite }
+        expect(partialCleanup == partialExpected, "Use partial cuts after full-rewrite validation fails")
+        expect(FluencyCleanup.salvagingRepetitions("I can't help with that.", source: noisy, localeIDs: ["pt_BR", "en_US"]) == nil,
+               "Unrelated response must not cause stutter deletion")
+        expect(FluencyCleanup.salvagingRepetitions("I can't help with the request.", source: noisy, localeIDs: ["pt_BR", "en_US"]) == nil,
+               "A shared function word in a refusal is not evidence of a requested edit")
+        expect(FluencyCleanup.salvagingRepetitions("", source: noisy, localeIDs: ["pt_BR", "en_US"]) == nil,
+               "Empty response must not delete anything")
+        let sensitive = "Eu eu disse não não para Maria Maria: 15 15. Muito muito importante. Go, go!"
+        let unsafe = "Eu disse para Maria: 50. Muito importante. Go!"
+        expect(FluencyCleanup.salvagingRepetitions(unsafe, source: sensitive, localeIDs: ["pt_BR", "en_US"])
+               == "Eu disse não não para Maria Maria: 15 15. Muito muito importante. Go, go!",
+               "Partial acceptance must keep names, numbers, negations, emphasis, and punctuated repetition")
+        expect(FluencyCleanup.salvagingRepetitions("The test works.", source: "The test works.", localeIDs: ["en_US"]) == nil,
+               "Do not invent edits when there is no stutter")
+        expect(FluencyCleanup.salvagingRepetitions("I I think it works.", source: "I I think it works.", localeIDs: ["en_US"]) == nil,
+               "Do not remove a repetition the model retained")
 
         let hugeToken = String(repeating: "x", count: FluencyCleanup.maxChunkBytes + 1)
         let original = "  uh first passage.\r\n\r\n" + String(repeating: "uh keep these words. ", count: 200)
