@@ -186,7 +186,8 @@ enum TranscriptMerger {
         }
     }
 
-    private static func join(_ left: String, _ right: String) -> String {
+    /// Also used to join completed recordings across a settings pause.
+    static func join(_ left: String, _ right: String) -> String {
         let a = left.trimmingCharacters(in: .whitespacesAndNewlines)
         let b = right.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let last = a.last, let first = b.first else { return a + b }

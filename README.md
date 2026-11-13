@@ -21,6 +21,7 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 - **Experimental language mixing.** Optionally combine words from the selected languages in one dictation, without translating them. This runs on-device and is off by default.
 - **Optional Smart cleanup.** Apple Intelligence can use sentence context to choose between recognized alternatives and add missing final punctuation. Runs on-device, with a five-second deadline and automatic fallback. Off by default.
 - **Quiet recording UI.** A smooth colored ribbon responds to microphone input, with elapsed time and all selected language codes. No distracting live transcript.
+- **Change languages while dictating.** Press ⌘, to pause and open Settings. Resume with new languages while keeping your earlier words.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
 - **Stays out of the way.** No Dock icon and no menu-bar item. It starts when you press the key and quits after 15 idle minutes.
 
@@ -71,8 +72,21 @@ Then open Phaedrus's settings and configure your shortcut as above.
 4. To stop, press **🎤** again, press **Return**, click the bubble, or stay quiet for 3 seconds.
    **Esc** cancels, also while the bubble still says "Starting…".
 
+To change languages while recording, press **⌘,** (Command-comma). Phaedrus stops the
+microphone, finishes the current segment, and opens Settings with the language choices
+at the top. **Return**, **Resume dictation**, or closing the settings window resumes with
+the new selection. The panel's timer continues counting recording time, excluding the pause.
+All segments are inserted together only when you finish.
+
+While paused, **Finish and insert** (⌘Return) inserts the words already captured, and
+**Esc** / **Cancel dictation** discards the entire dictation. A failed restart preserves
+earlier segments and reopens Settings so you can retry or finish. The original macOS
+Service has a time limit; a paused session shows a warning in its final minute and then
+finishes with the saved text before that limit is reached.
+
 The text replaces the current selection, if there is one. While the bubble is visible,
-Return and Esc go to Phaedrus, not to the app you're typing in.
+Return and Esc go to Phaedrus during recording; in paused Settings, Return resumes and
+Esc cancels. Command-comma is captured globally only while a recording is starting or running.
 
 A few apps don't accept text from Services (some Electron-based apps, for example). With
 **Also copy the text to the clipboard** turned on (the default), just press ⌘V there.
@@ -80,6 +94,11 @@ A few apps don't accept text from Services (some Electron-based apps, for exampl
 ## Settings
 
 Open **Phaedrus** from Spotlight or Finder:
+
+You can also use **⌘,** while Phaedrus is focused. To open Settings from other apps, even
+when Phaedrus is not running, assign a shortcut to **Phaedrus Settings** in
+**System Settings → Keyboard → Keyboard Shortcuts → Services**. This is separate from
+the dictation shortcut; no global shortcut is assigned automatically.
 
 | Setting | Default |
 |---|---|
@@ -157,7 +176,7 @@ continues to work without Apple Intelligence.
 | `Sources/SmartCleanup.swift` | Optional on-device Foundation Models integration and availability checks. |
 | `Sources/CleanupDeadline.swift` | Cancellation and a deadline that also returns promptly when inference ignores cancellation. |
 | `Sources/HUD.swift` | Rounded recording panel, microphone-driven ribbon, elapsed time, and listening/finishing/error states. Respects Reduce Motion and Increase Contrast. |
-| `Sources/App.swift` | The Service entry point, temporary global keys and the session loop. The keys use Carbon `RegisterEventHotKey`, which needs no permission, and are registered only while a session runs. |
+| `Sources/App.swift` | Dictation/Settings Services, temporary global keys, pause/resume, and the session loop. Carbon hotkeys are released while editing Settings, and a fresh recognizer uses the new selection on resume. |
 | `Sources/SettingsView.swift` | The SwiftUI settings window. |
 | `scripts/mic-key.sh` | `on`/`off`: remaps the 🎤 key (HID usage `0xC000000CF`) to F18 with `hidutil` and installs a LaunchAgent that re-applies it at login. Bundled in the app and used by the settings toggle. |
 | `scripts/make-icon.swift` | Draws the icon, a black-figure Greek pottery style. `scripts/make-icon.sh` rebuilds `Resources/AppIcon.icns`. |

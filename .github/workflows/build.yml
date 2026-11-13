@@ -33,6 +33,9 @@ jobs:
       - name: Check native model integration
         run: scripts/test-native-cleanup.sh
 
+      - name: Check pause and settings sessions
+        run: scripts/test-session-settings.sh
+
       - name: Render recording panel previews
         run: scripts/preview-hud.sh
 

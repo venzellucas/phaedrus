@@ -21,7 +21,20 @@ struct PhaedrusError: LocalizedError {
     var errorDescription: String? { message }
 }
 
-final class DictationEngine: @unchecked Sendable {
+/// Allows the session controller to be exercised without a microphone or models.
+protocol DictationRecognizing: AnyObject, Sendable {
+    var phase: DictationEngine.Phase { get }
+    var downloadFraction: Double? { get }
+    var lastActivity: Date { get }
+    var activityDetail: (text: Date, voice: Date) { get }
+    var heardSomething: Bool { get }
+    var audioActivity: DictationEngine.AudioActivity { get }
+    func start(localeIDs: [String], mixLanguages: Bool, smartCleanup: Bool) async throws
+    func stop(cancel: Bool) async throws -> DictationEngine.Outcome?
+    func abort() async
+}
+
+final class DictationEngine: DictationRecognizing, @unchecked Sendable {
     struct Outcome: Sendable {
         let text: String
         let localeIDs: [String]
@@ -99,12 +112,14 @@ final class DictationEngine: @unchecked Sendable {
     // MARK: start
 
     func start(localeIDs: [String], mixLanguages: Bool = false, smartCleanup: Bool = false) async throws {
+        try Task.checkCancellation()
         self.mixLanguages = mixLanguages
         self.smartCleanup = smartCleanup
         guard SpeechTranscriber.isAvailable else { throw PhaedrusError("On-device speech is not available on this Mac") }
         guard await AVCaptureDevice.requestAccess(for: .audio) else {
             throw PhaedrusError("Microphone access denied. Allow it in System Settings → Privacy & Security → Microphone")
         }
+        try Task.checkCancellation()
 
         var locales: [Locale] = []
         for id in localeIDs {
@@ -114,6 +129,7 @@ final class DictationEngine: @unchecked Sendable {
             if !locales.contains(l) { locales.append(l) }
         }
         guard !locales.isEmpty else { throw PhaedrusError("No languages selected") }
+        try Task.checkCancellation()
 
         let tracks = locales.map(Track.init)
         let modules = tracks.map(\.module)
@@ -134,14 +150,16 @@ final class DictationEngine: @unchecked Sendable {
             try await req.downloadAndInstall()
             lock.withLock { _download = nil }
         }
+        try Task.checkCancellation()
         lock.withLock { _phase = .preparing }
 
         guard let format = await SpeechAnalyzer.bestAvailableAudioFormat(compatibleWith: modules) else {
             throw PhaedrusError("No compatible audio format")
         }
         let analyzer = SpeechAnalyzer(modules: modules)
-        try await analyzer.prepareToAnalyze(in: format)
         self.analyzer = analyzer
+        try await analyzer.prepareToAnalyze(in: format)
+        try Task.checkCancellation()
 
         for t in tracks {
             t.reader = Task { [weak self] in
@@ -177,6 +195,7 @@ final class DictationEngine: @unchecked Sendable {
         self.audioEngine = engine
 
         try await analyzer.start(inputSequence: stream)
+        try Task.checkCancellation()
         try engine.start()
         lock.withLock { _phase = .running }
     }

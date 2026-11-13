@@ -16,6 +16,7 @@ enum HUDPreview {
         let states: [(String, HUD.Mode, String, Double?)] = [
             ("listening", .listening, "Listening", 0.8),
             ("quiet", .listening, "Listening", 0.02),
+            ("paused", .paused, "Paused · microphone off", nil),
             ("interrupted", .listening, "Listening", -1),
             ("preparing", .preparing, "Downloading speech model… 45%", nil),
             ("finishing", .transcribing, "Finishing…", nil),

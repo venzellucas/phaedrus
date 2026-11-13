@@ -11,6 +11,7 @@ Use macOS 26 or later with Xcode Command Line Tools and the macOS 26 SDK or late
 scripts/build.sh --no-install  # compile and sign build/Phaedrus.app
 scripts/test.sh                # deterministic transcript alignment fixtures
 scripts/test-native-cleanup.sh # Foundation Models smoke check, synthetic text only
+scripts/test-session-settings.sh # native pause/resume/settings checks, fake recognizers
 scripts/preview-hud.sh         # render native panel states without microphone input
 scripts/build.sh               # rebuild and install to ~/Applications
 open ~/Applications/Phaedrus.app
@@ -24,7 +25,9 @@ CI checks shell syntax, compiles the app with Swift 6, and verifies its bundle a
 It also packages an Apple silicon test ZIP, extracts it, and checks the executable and
 signature again before uploading it as a workflow artifact. You can run **Build** manually
 from the Actions tab. Downloads expire after 30 days and require GitHub sign-in.
-It does not exercise microphone input, keyboard shortcuts, or text insertion.
+It does not exercise real microphone input, physical key events, or Services text insertion.
+Native session tests use fake recognizers to exercise the actual nested event loop, settings
+loading, menu command, pause/resume, startup cancellation, failed restart, and saved text.
 The alignment and cleanup checks use synthetic timed transcripts and injected model decisions;
 passing them does not establish recognition accuracy or model quality on real bilingual audio.
 The native cleanup smoke check verifies the unavailable-model fallback on CI machines without
@@ -42,6 +45,15 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   works in an app that does not accept Services text.
 - Return, the shortcut, a click on the bubble, and silence stop dictation. Esc cancels
   without inserting text, including during startup.
+- Press ⌘, while recording, including while starting a model. Confirm the microphone is off
+  before paused Settings appears, the language list loads, and changing languages then pressing
+  Return or closing the window resumes in the original target app. Earlier and later words
+  must be inserted together once. Repeat several pauses; verify the timer excludes paused time.
+  Test Finish and insert / ⌘Return, Esc, a silent resumed segment, and a failed restart.
+- Assign a separate shortcut to the no-input “Phaedrus Settings” Service. Check it opens
+  Settings from another app with Phaedrus closed, and pauses an active recording. Opening it
+  must not change the caller's text or clipboard. Other apps retain their usual ⌘, behavior
+  when Phaedrus is not recording.
 - If a stop/cancel key is already registered by another app, dictation shows a shortcut
   error before starting the microphone. After resolving the conflict, retrying works.
 - Denied microphone access produces a useful message. The first use of a new language

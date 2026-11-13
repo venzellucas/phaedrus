@@ -6,7 +6,7 @@ import QuartzCore
 
 @MainActor
 final class HUD {
-    enum Mode { case preparing, listening, transcribing, error }
+    enum Mode { case preparing, listening, paused, transcribing, error }
 
     private let panel: NSPanel
     private let surface: RecordingSurface
@@ -131,7 +131,7 @@ private final class RecordingSurface: NSView {
         clock.setAccessibilityElement(false)
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
-        setAccessibilityHelp("Press Return or click to finish dictation. Press Escape to cancel.")
+        setAccessibilityHelp("Press Return or click to finish dictation. Press Escape to cancel. Press Command-comma to pause and change settings.")
         addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(clicked(_:))))
     }
 
@@ -148,11 +148,15 @@ private final class RecordingSurface: NSView {
     }
 
     func updateLabels() {
+        setAccessibilityHelp(mode == .paused
+            ? "The microphone is off. Press Return or click to resume. Press Escape to cancel the entire dictation."
+            : "Press Return or click to finish dictation. Press Escape to cancel. Press Command-comma to pause and change settings.")
         detail.stringValue = mode == .listening ? languageText : "Phaedrus"
         detail.toolTip = mode == .listening ? languageDescription : nil
         hint.stringValue = switch mode {
-        case .listening: "↵ finish    esc cancel"
-        case .preparing: "esc cancel"
+        case .listening: "↵ finish   esc cancel   ⌘, settings"
+        case .preparing: "esc cancel   ⌘, settings"
+        case .paused: "↵ resume    esc cancel"
         case .transcribing: ""
         case .error: "Try again with the shortcut"
         }
@@ -171,7 +175,9 @@ private final class RecordingSurface: NSView {
         level += (targetLevel - level) * (1 - exp(-dt * rate))
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         // An interrupted microphone gets a still ribbon, never a fake signal.
-        if !reduced && (mode != .listening || inputAvailable) { phase += dt * (mode == .listening ? 1.6 : 0.8) }
+        if !reduced && mode != .paused && (mode != .listening || inputAvailable) {
+            phase += dt * (mode == .listening ? 1.6 : 0.8)
+        }
         needsDisplay = true
     }
 
@@ -209,7 +215,7 @@ private final class RecordingSurface: NSView {
 
     private func drawRibbon() {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
-        let energy = mode == .listening ? level : 0.18
+        let energy = mode == .listening ? level : (mode == .paused ? 0 : 0.18)
         let amplitude = reduced ? 3.0 : 2.5 + energy * 8.5
         let colors: [NSColor] = [
             NSColor(srgbRed: 1, green: 0.47, blue: 0.43, alpha: 1),
