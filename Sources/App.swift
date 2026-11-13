@@ -6,6 +6,7 @@
 //
 // While a session runs:  🎤 / Return / click on the HUD = stop and insert,
 //                        Esc = cancel (also while starting),
+//                        Command-comma = pause and change settings,
 //                        silence for N seconds = stop and insert.
 // macOS launches the app on demand; it quits after 15 idle minutes. Launching it
 // yourself opens the settings window (SettingsView.swift).
@@ -13,7 +14,6 @@
 import AppKit
 import AVFoundation
 import Carbon
-import QuartzCore
 
 /// Debug log to stderr, enabled with PHAEDRUS_DEBUG=1. Never pass transcript text to it.
 func dlog(_ message: @autoclosure () -> String) {
@@ -58,102 +58,15 @@ enum Prefs {
     static var maxSeconds: Double { min(num("maxSeconds", 300), maxDictationSeconds) }
     static var copyToClipboard: Bool { flag("copyToClipboard", true) }
     static var playSounds: Bool { flag("playSounds", true) }
+    static var mixLanguages: Bool { flag("mixLanguages", false) }
+    static var smartCleanup: Bool { flag("smartCleanup", false) }
+    static var cleanupStyle: CleanupStyle { CleanupStyle(rawValue: d.string(forKey: "cleanupStyle") ?? "") ?? .conservative }
     static func sound(_ name: String) { if playSounds { NSSound(named: name)?.play() } }
-}
-
-// MARK: - HUD
-
-@MainActor
-final class HUD {
-    enum Mode { case preparing, listening, transcribing, error }
-
-    private let panel: NSPanel
-    private let dot = CALayer()
-    private let label = NSTextField(labelWithString: "")
-    var onClick: (() -> Void)?
-
-    init() {
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 420, height: 48),
-                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        panel.isFloatingPanel = true
-        panel.level = .statusBar
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = true
-        panel.hidesOnDeactivate = false
-
-        let bg = NSVisualEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
-        bg.material = .hudWindow
-        bg.state = .active
-        bg.blendingMode = .behindWindow
-        bg.wantsLayer = true
-        bg.layer?.cornerRadius = 24
-        bg.layer?.masksToBounds = true
-        panel.contentView = bg
-
-        dot.bounds = CGRect(x: 0, y: 0, width: 14, height: 14)
-        dot.position = CGPoint(x: 26, y: 24)
-        dot.cornerRadius = 7
-        bg.layer?.addSublayer(dot)
-
-        label.frame = NSRect(x: 46, y: 14, width: 360, height: 20)
-        label.font = .systemFont(ofSize: 14)
-        label.textColor = .labelColor
-        label.maximumNumberOfLines = 1
-        bg.addSubview(label)
-
-        bg.addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(clicked)))
-    }
-
-    @objc private func clicked() { onClick?() }
-
-    func show(_ mode: Mode, _ text: String) {
-        label.stringValue = text
-        // the live preview keeps its newest words visible; status and errors keep their start
-        label.lineBreakMode = mode == .listening ? .byTruncatingHead : .byTruncatingTail
-        dot.removeAllAnimations()
-        switch mode {
-        case .preparing: dot.backgroundColor = NSColor.systemGray.cgColor
-        case .transcribing: dot.backgroundColor = NSColor.systemOrange.cgColor
-        case .error: dot.backgroundColor = NSColor.systemYellow.cgColor
-        case .listening:
-            dot.backgroundColor = NSColor.systemRed.cgColor
-            let scale = CABasicAnimation(keyPath: "transform.scale")
-            scale.fromValue = 0.8; scale.toValue = 1.35
-            let fade = CABasicAnimation(keyPath: "opacity")
-            fade.fromValue = 1.0; fade.toValue = 0.45
-            let g = CAAnimationGroup()
-            g.animations = [scale, fade]
-            g.duration = 0.7
-            g.autoreverses = true
-            g.repeatCount = .infinity
-            g.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            dot.add(g, forKey: "pulse")
-        }
-        if !panel.isVisible {
-            let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-            if let f = screen?.visibleFrame {
-                panel.setFrameOrigin(NSPoint(x: f.midX - panel.frame.width / 2, y: f.minY + 90))
-            }
-            panel.orderFrontRegardless()
-        }
-    }
-
-    /// Updates the text only (keeps the current mode).
-    func status(_ text: String) { label.stringValue = text }
-
-    func preview(_ text: String) {
-        let t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        label.stringValue = t.isEmpty ? "Listening…" : t
-    }
-
-    func hide() { panel.orderOut(nil) }
 }
 
 // MARK: - Global keys (registered only during a session; no permission needed)
 
-enum KeyAction: UInt32 { case stop = 1, cancel = 2 }
+enum KeyAction: UInt32 { case stop = 1, cancel = 2, settings = 3 }
 
 @MainActor
 final class HotKeys {
@@ -180,10 +93,13 @@ final class HotKeys {
     func register() -> Bool {
         guard refs.isEmpty else { return true }
         guard HotKeys.installOnce() else { return false }
-        let keys: [(Int, KeyAction)] = [(kVK_F18, .stop), (kVK_Return, .stop), (kVK_ANSI_KeypadEnter, .stop), (kVK_Escape, .cancel)]
-        for (code, action) in keys {
+        let keys: [(Int, UInt32, KeyAction)] = [
+            (kVK_F18, 0, .stop), (kVK_Return, 0, .stop), (kVK_ANSI_KeypadEnter, 0, .stop),
+            (kVK_Escape, 0, .cancel), (kVK_ANSI_Comma, UInt32(cmdKey), .settings)
+        ]
+        for (code, modifiers, action) in keys {
             var ref: EventHotKeyRef?
-            let st = RegisterEventHotKey(UInt32(code), 0, EventHotKeyID(signature: OSType(0x5068_6472 /* "Phdr" */), id: action.rawValue),
+            let st = RegisterEventHotKey(UInt32(code), modifiers, EventHotKeyID(signature: OSType(0x5068_6472 /* "Phdr" */), id: action.rawValue),
                                          GetApplicationEventTarget(), 0, &ref)
             guard st == noErr, let ref else {
                 dlog("hotkey registration failed: key=\(code), status=\(st)")
@@ -207,6 +123,9 @@ final class HotKeys {
 final class Controller: NSObject, NSApplicationDelegate {
     private let hud = HUD()
     private let keys = HotKeys()
+    private let makeEngine: @Sendable () -> any DictationRecognizing
+    private let cleanTranscript: @Sendable (String, [String], CleanupPlan?, CleanupStyle) async -> String
+    private let pausedDictation = PausedDictationControls()
     private var busy = false
     private var inServiceCall = false
     private var idleTimer: Timer?
@@ -224,10 +143,21 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var finished = false
     private var resultText: String?
     private var errorText: String?
+    private var refiningSince: Date?
+    private var segmentSeconds = 0.0
+    private var segmentCanPause = true
+
+    init(engineFactory: @escaping @Sendable () -> any DictationRecognizing = { DictationEngine() },
+         cleanup: @escaping @Sendable (String, [String], CleanupPlan?, CleanupStyle) async -> String = SmartCleanup.process) {
+        makeEngine = engineFactory
+        cleanTranscript = cleanup
+        super.init()
+    }
 
     func applicationDidFinishLaunching(_ n: Notification) {
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
+        installMenu()
         HotKeys.handler = { [weak self] a in self?.requestStop(a) }
         hud.onClick = { [weak self] in self?.requestStop(.stop) }
         scheduleIdleQuit()
@@ -249,16 +179,49 @@ final class Controller: NSObject, NSApplicationDelegate {
         return false
     }
 
-    func showSettings() {
+    @objc func showSettings() {
+        if busy && !pausedDictation.isPaused {
+            if stopRequest == .stop { stopRequest = .settings }
+            else { requestStop(.settings) }
+            return
+        }
+        openSettingsWindow()
+    }
+
+    private func openSettingsWindow() {
         if settingsWindow == nil {
-            settingsWindow = SettingsWindow { [weak self] in
+            settingsWindow = SettingsWindow(pausedDictation: pausedDictation) { [weak self] in
                 guard let self else { return }
                 self.settingsWindow = nil
+                if self.pausedDictation.isPaused && self.pausedDictation.action == nil {
+                    self.pausedDictation.action = .resume
+                }
                 // opened just for the settings: quit when they are closed
                 if !self.busy && !self.inServiceCall { NSApp.terminate(nil) }
             }
         }
         settingsWindow?.show()
+    }
+
+    private func installMenu() {
+        let menu = NSMenu()
+        let appItem = NSMenuItem(title: "Phaedrus", action: nil, keyEquivalent: "")
+        let appMenu = NSMenu(title: "Phaedrus")
+        let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: ",")
+        settings.target = self
+        appMenu.addItem(settings)
+        appMenu.addItem(.separator())
+        let quit = NSMenuItem(title: "Quit Phaedrus", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        quit.target = NSApp
+        appMenu.addItem(quit)
+        appItem.submenu = appMenu
+        menu.addItem(appItem)
+        let windowItem = NSMenuItem(title: "Window", action: nil, keyEquivalent: "")
+        let windowMenu = NSMenu(title: "Window")
+        windowMenu.addItem(NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w"))
+        windowItem.submenu = windowMenu
+        menu.addItem(windowItem)
+        NSApp.mainMenu = menu
     }
 
     private func scheduleIdleQuit() {
@@ -271,13 +234,29 @@ final class Controller: NSObject, NSApplicationDelegate {
     }
 
     private func requestStop(_ a: KeyAction) {
+        if busy && pausedDictation.isPaused {
+            switch a {
+            case .stop: pausedDictation.action = .resume
+            case .cancel: pausedDictation.action = .cancel
+            case .settings: openSettingsWindow()
+            }
+            return
+        }
         guard busy, stopRequest == nil, !finished else { return }
         // ignore an auto-repeat of the key that started the session
-        if Date().timeIntervalSince(sessionStart) < 0.4 { return }
+        if a != .settings && Date().timeIntervalSince(sessionStart) < 0.4 { return }
         stopRequest = a
     }
 
     // MARK: service
+
+    /// No-input/no-output Service: users can assign a separate global shortcut
+    /// in macOS, including one that launches Phaedrus when it is not running.
+    @objc func openSettings(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
+        servedRequest = true
+        error.pointee = nil
+        showSettings()
+    }
 
     /// The service entry point (NSMessage "dictate" in Info.plist).
     @objc func dictate(_ pboard: NSPasteboard, userData: String?, error: AutoreleasingUnsafeMutablePointer<NSString?>) {
@@ -320,6 +299,68 @@ final class Controller: NSObject, NSApplicationDelegate {
         idleTimer?.invalidate()
         defer { busy = false; scheduleIdleQuit() }
 
+        let target = NSWorkspace.shared.frontmostApplication
+        settingsWindow?.close()
+        // Pauses don't consume recording time, but the original Service call has
+        // a wall-clock deadline. Finish saved text before its caller times out.
+        let deadline = Date().addingTimeInterval(Prefs.serviceTimeout - 60)
+        var text = ""
+        var recordedSeconds = 0.0
+        var hasPaused = false
+        while Date() < deadline {
+            let remaining = Prefs.maxSeconds - recordedSeconds
+            guard remaining > 0 else { break }
+            let segment = runSegment(maxSeconds: remaining, elapsedBefore: recordedSeconds,
+                                     serviceDeadline: deadline, hasPreviousText: !text.isEmpty)
+            recordedSeconds += segmentSeconds
+            if stopRequest == .cancel { return nil }
+            if let segment { text = TranscriptMerger.join(text, segment) }
+            guard segmentCanPause else { break }
+            guard stopRequest == .settings || (hasPaused && errorText != nil) else { break }
+            hasPaused = true
+            let action = pauseForSettings(hasText: !text.isEmpty, message: errorText, deadline: deadline)
+            if target?.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+                target?.activate(options: [])
+            }
+            switch action {
+            case .resume: continue
+            case .finish: return text.isEmpty ? nil : text
+            case .cancel: return nil
+            }
+        }
+        return text.isEmpty ? nil : text
+    }
+
+    private func pauseForSettings(hasText: Bool, message: String?, deadline: Date) -> PausedDictationControls.Action {
+        keys.unregister()
+        pausedDictation.action = nil
+        pausedDictation.hasText = hasText
+        pausedDictation.message = message
+        pausedDictation.deadlineWarning = nil
+        pausedDictation.isPaused = true
+        hud.show(.paused, "Paused · microphone off")
+        openSettingsWindow()
+        defer {
+            pausedDictation.isPaused = false
+            settingsWindow?.close()
+            hud.hide()
+        }
+        while pausedDictation.action == nil && Date() < deadline {
+            pump(0.05)
+            let seconds = Int(ceil(deadline.timeIntervalSinceNow))
+            if seconds <= 60 {
+                let warning = "This session will finish in \(max(0, seconds)) seconds."
+                if pausedDictation.deadlineWarning != warning { pausedDictation.deadlineWarning = warning }
+            }
+        }
+        return pausedDictation.action ?? .finish
+    }
+
+    /// One microphone run. Finalize before opening settings so no speech model
+    /// or microphone from the previous language selection keeps recording.
+    private func runSegment(maxSeconds: Double, elapsedBefore: Double,
+                            serviceDeadline: Date, hasPreviousText: Bool) -> String? {
+
         sessionID += 1
         let id = sessionID
         sessionStart = Date()
@@ -328,15 +369,23 @@ final class Controller: NSObject, NSApplicationDelegate {
         finished = false
         resultText = nil
         errorText = nil
+        refiningSince = nil
+        segmentSeconds = 0
+        segmentCanPause = true
+        var completionTask: Task<Void, Never>?
+        defer { completionTask?.cancel() }
 
-        let engine = DictationEngine()
+        let engine = makeEngine()
         let abandoned = AtomicFlag()    // set when the session ends before `start` returns
+        let startupSettled = AtomicFlag()
         var stopping = false
         var stopRequestedAt = Date()
         var preparingSince: Date?
+        var startupCancelledAt: Date?
 
         // Register every stop/cancel key before starting the microphone.
         guard keys.register() else {
+            errorText = "Dictation shortcut unavailable. Check for conflicts."
             Prefs.sound("Basso")
             hud.show(.error, "Dictation shortcut unavailable. Check for conflicts.")
             pump(2.5)
@@ -344,46 +393,68 @@ final class Controller: NSObject, NSApplicationDelegate {
             return nil
         }
         hud.show(.preparing, "Starting…")
-        engine.onPreview = { t in
-            onMainRunLoop { [weak self] in
-                if let self, self.sessionID == id, self.listening { self.hud.preview(t) }
-            }
-        }
 
         let locales = Prefs.locales
-        Task.detached {
+        let mixLanguages = Prefs.mixLanguages
+        let smartCleanup = Prefs.smartCleanup
+        let cleanupStyle = Prefs.cleanupStyle
+        let cleanup = cleanTranscript
+        hud.languages(locales)
+        let startupTask = Task.detached {
+            defer { startupSettled.set() }
             do {
                 dlog("starting engine: \(locales.joined(separator: ","))")
-                try await engine.start(localeIDs: locales)
+                try await engine.start(localeIDs: locales, mixLanguages: mixLanguages, smartCleanup: smartCleanup)
                 if abandoned.isSet { await engine.abort(); return }
-                dlog("listening")
-                onMainRunLoop { [weak self] in self?.didStartListening(id, engine) }
+                let accepted = await withCheckedContinuation { continuation in
+                    onMainRunLoop { [weak self] in
+                        continuation.resume(returning: self?.didStartListening(id) ?? false)
+                    }
+                }
+                if !accepted { await engine.abort() }
             } catch {
                 await engine.abort()
                 if abandoned.isSet { return }
                 let message = error.localizedDescription
                 onMainRunLoop { [weak self] in
-                    guard let self, self.sessionID == id else { return }
+                    guard let self, self.sessionID == id, !self.finished else { return }
                     self.errorText = message
                     self.finished = true
                 }
             }
         }
+        defer { startupTask.cancel() }
 
         // the caller of the service stops waiting after Prefs.serviceTimeout
-        let deadline = sessionStart.addingTimeInterval(min(Prefs.serviceTimeout - 60, Prefs.maxSeconds + 120))
+        let deadline = min(serviceDeadline, sessionStart.addingTimeInterval(maxSeconds + 120))
 
         while !finished {
             pump(0.05)
+            if finished { break }
             let now = Date()
 
             if !listening && !stopping {
                 // starting: any stop request cancels; watch for downloads and hangs
                 if stopRequest != nil {
-                    dlog("cancelled while starting")
-                    abandoned.set()
-                    finished = true
-                    break
+                    if startupCancelledAt == nil {
+                        dlog("cancelled while starting")
+                        startupCancelledAt = now
+                        abandoned.set()
+                        startupTask.cancel()
+                    }
+                    if stopRequest != .settings || startupSettled.isSet {
+                        finished = true
+                        break
+                    }
+                    // Don't announce microphone-off or start a second engine
+                    // until the abandoned startup has fully torn down.
+                    hud.status("Pausing…")
+                    if now.timeIntervalSince(startupCancelledAt!) > 5 {
+                        segmentCanPause = false
+                        errorText = "Speech is still stopping. Please try again."
+                        finished = true
+                    }
+                    continue
                 }
                 switch engine.phase {
                 case .download:
@@ -406,6 +477,10 @@ final class Controller: NSObject, NSApplicationDelegate {
                 continue
             }
 
+            if listening {
+                hud.updateAudio(engine.audioActivity, elapsed: elapsedBefore + now.timeIntervalSince(listeningSince))
+            }
+
             if listening && stopRequest == nil {
                 let quiet = now.timeIntervalSince(engine.lastActivity)
                 if engine.heardSomething {
@@ -417,9 +492,9 @@ final class Controller: NSObject, NSApplicationDelegate {
                     }
                 } else if now.timeIntervalSince(listeningSince) > Prefs.noSpeech && quiet > Prefs.silence {
                     dlog("nothing heard")
-                    stopRequest = .cancel
+                    stopRequest = hasPreviousText ? .stop : .cancel
                 }
-                if now.timeIntervalSince(listeningSince) > Prefs.maxSeconds || now > deadline {
+                if now.timeIntervalSince(listeningSince) > maxSeconds || now > deadline {
                     dlog("time limit")
                     stopRequest = .stop
                 }
@@ -429,23 +504,43 @@ final class Controller: NSObject, NSApplicationDelegate {
                 dlog("stop request: \(req)")
                 stopping = true
                 stopRequestedAt = now
+                segmentSeconds = now.timeIntervalSince(listeningSince)
                 listening = false
                 keys.unregister()
-                hud.show(.transcribing, req == .cancel ? "Cancelled" : "Transcribing…")
-                Task.detached {
+                hud.show(.transcribing, req == .cancel ? "Cancelled" : (req == .settings ? "Pausing…" : "Finishing…"))
+                completionTask = Task.detached {
                     do {
                         let out = try await engine.stop(cancel: req == .cancel)
-                        dlog("stopped: \(out.map { "\($0.text.count) chars, \($0.locale.identifier), confidence \(String(format: "%.2f", $0.confidence))" } ?? "no text")")
-                        let text = out?.text
+                        dlog("stopped: \(out.map { "\($0.text.count) chars, \($0.localeIDs.joined(separator: "+")), confidence \(String(format: "%.2f", $0.confidence))" } ?? "no text")")
+                        var text = out?.text
+                        if smartCleanup, let out, out.cleanupPlan != nil || cleanupStyle != .conservative, !Task.isCancelled {
+                            let ready = await withCheckedContinuation { continuation in
+                                onMainRunLoop { [weak self] in
+                                    guard let self, self.sessionID == id, !self.finished else {
+                                        continuation.resume(returning: false)
+                                        return
+                                    }
+                                    self.resultText = out.text
+                                    self.refiningSince = Date()
+                                    self.hud.status("Refining…")
+                                    continuation.resume(returning: true)
+                                }
+                            }
+                            guard ready else { return }
+                            dlog("cleanup starting: style=\(cleanupStyle.rawValue)")
+                            text = await cleanup(out.text, locales, out.cleanupPlan, cleanupStyle)
+                            dlog("cleanup finished: style=\(cleanupStyle.rawValue), changed=\(text != out.text)")
+                        }
+                        let finalText = text
                         onMainRunLoop { [weak self] in
-                            guard let self, self.sessionID == id else { return }
-                            self.resultText = text
+                            guard let self, self.sessionID == id, !self.finished else { return }
+                            self.resultText = finalText
                             self.finished = true
                         }
                     } catch {
                         let message = error.localizedDescription
                         onMainRunLoop { [weak self] in
-                            guard let self, self.sessionID == id else { return }
+                            guard let self, self.sessionID == id, !self.finished else { return }
                             self.errorText = message
                             self.finished = true
                         }
@@ -453,7 +548,14 @@ final class Controller: NSObject, NSApplicationDelegate {
                 }
             }
 
-            if stopping && now.timeIntervalSince(stopRequestedAt) > 20 {
+            if let refiningSince {
+                // The async deadline normally returns first. Keep the finalized
+                // transcript even if a framework/scheduler stalls during cleanup.
+                if now.timeIntervalSince(refiningSince) > cleanupStyle.timeoutSeconds + 1 {
+                    completionTask?.cancel()
+                    finished = true
+                }
+            } else if stopping && now.timeIntervalSince(stopRequestedAt) > 20 {
                 errorText = "Transcription did not finish. Please try again."
                 finished = true
             }
@@ -468,19 +570,20 @@ final class Controller: NSObject, NSApplicationDelegate {
             return nil
         }
         hud.hide()
-        Prefs.sound(resultText == nil ? "Funk" : "Pop")
+        if stopRequest != .settings {
+            Prefs.sound(stopRequest == .cancel || (resultText == nil && !hasPreviousText) ? "Funk" : "Pop")
+        }
         return resultText
     }
 
-    private func didStartListening(_ id: Int, _ engine: DictationEngine) {
-        guard sessionID == id, !finished else {
-            Task.detached { await engine.abort() }   // the session ended while the engine was starting
-            return
-        }
+    private func didStartListening(_ id: Int) -> Bool {
+        guard sessionID == id, !finished, stopRequest == nil else { return false }
         listening = true
         listeningSince = Date()
+        dlog("listening")
         Prefs.sound("Tink")
-        hud.show(.listening, "Listening…")
+        hud.show(.listening, "Listening")
+        return true
     }
 
     private func pump(_ seconds: TimeInterval) {

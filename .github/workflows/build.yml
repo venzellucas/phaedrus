@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   build:
+    name: macOS build and tests
     runs-on: macos-26
     timeout-minutes: 15
     steps:
@@ -26,6 +27,28 @@ jobs:
 
       - name: Build app
         run: scripts/build.sh --no-install
+
+      - name: Check transcript alignment and cleanup
+        run: scripts/test.sh
+
+      - name: Check native model integration
+        run: scripts/test-native-cleanup.sh
+
+      - name: Check pause and settings sessions
+        run: scripts/test-session-settings.sh
+
+      - name: Render recording panel previews
+        run: scripts/preview-hud.sh
+
+      - name: Upload panel previews
+        uses: actions/upload-artifact@v7
+        with:
+          name: recording-panel-previews
+          path: |
+            build/hud-previews/*.png
+            build/hud-previews/*.gif
+          if-no-files-found: error
+          retention-days: 30
 
       - name: Verify bundle
         run: |

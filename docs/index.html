@@ -7,7 +7,7 @@
     <title>Phaedrus — Your voice, right where you write.</title>
     <meta
       name="description"
-      content="A small, open-source dictation app for macOS 26. Press a shortcut, speak, and put your words at the cursor. Speech recognition runs on your Mac."
+      content="On-device dictation for macOS 26 with optional Portuguese/English mixing, Apple Intelligence cleanup, and a quiet recording ribbon. Download Phaedrus v0.2.0."
     />
     <link rel="canonical" href="https://venzellucas.github.io/phaedrus/" />
     <meta property="og:type" content="website" />
@@ -17,7 +17,7 @@
     />
     <meta
       property="og:description"
-      content="On-device dictation for macOS 26. Open source, no subscription, and no Accessibility permission."
+      content="Speak across languages. Choose Conservative, Natural, or Written review. Free, open-source dictation on your Mac."
     />
     <meta property="og:url" content="https://venzellucas.github.io/phaedrus/" />
     <meta
@@ -75,7 +75,7 @@
             >
           </div>
           <p class="hero-meta">
-            macOS 26+ <span aria-hidden="true">/</span> Free &amp; open source
+            v0.2.0 <span aria-hidden="true">/</span> macOS 26+ <span aria-hidden="true">/</span> Free &amp; open source
             <span aria-hidden="true">/</span> MIT license
           </p>
         </div>
@@ -92,26 +92,22 @@
               ><span>A blank page</span><span aria-hidden="true">⌘</span>
             </div>
             <div class="note-body">
-              <span class="note-label">A note to myself</span>
+              <span class="note-label">One thought, two languages</span>
               <p id="demo-text">
-                Leave a little room in the day for a good conversation.
+                Preciso fazer o deploy hoje, then send the update.
               </p>
               <span class="cursor" aria-hidden="true"></span>
             </div>
             <div class="dictation-bubble">
-              <span class="record-dot" aria-hidden="true"></span
-              ><span id="demo-status">A thought, put into words.</span
-              ><span class="waveform" aria-hidden="true"
-                ><i></i><i></i><i></i><i></i><i></i><i></i><i></i
-              ></span>
+              <img id="recording-preview" src="media/listening.png" width="420" height="124"
+                alt="Phaedrus recording panel: a colored ribbon, timer, and Portuguese, English, and Spanish language indicators" />
             </div>
           </div>
           <figcaption>
-            <span>Illustrated preview · no microphone used</span
-            ><button id="play-demo" type="button" hidden>
-              Play example <span aria-hidden="true">↻</span>
-            </button>
+            <span>Native recording panel · simulated input</span>
+            <button id="play-demo" type="button" hidden>Play recording <span aria-hidden="true">↻</span></button>
           </figcaption>
+          <p id="demo-status" class="sr-only" role="status"></p>
         </figure>
       </section>
 
@@ -140,6 +136,51 @@
             license and no subscription.
           </p>
         </article>
+      </section>
+
+      <section class="release-features wrap section" aria-labelledby="release-title">
+        <div class="section-heading">
+          <p class="eyebrow">New in 0.2.0</p>
+          <h2 id="release-title">Speak your way.<br />Keep your voice.</h2>
+          <p>More room for language switches, spoken thoughts, and the way you actually work.</p>
+        </div>
+        <div class="feature-stories">
+          <article>
+            <h3>Português. English. Both.</h3>
+            <p>Choose up to three languages. Optional language mixing keeps words in the language you speak, even within a sentence. Experimental and off by default.</p>
+          </article>
+          <article>
+            <h3>Choose how much to polish.</h3>
+            <p>Optional Smart cleanup uses Apple Intelligence on your Mac after you finish speaking.</p>
+            <dl class="review-styles">
+              <div><dt>Conservative</dt><dd>Recognized alternatives and final punctuation.</dd></div>
+              <div><dt>Natural</dt><dd>Fewer repetitions, fillers, and abandoned starts.</dd></div>
+              <div><dt>Written</dt><dd>Grammar, spelling, and contextual word corrections, while aiming to keep your voice and idea order.</dd></div>
+            </dl>
+            <p class="feature-note">Cleanup is experimental and can make mistakes. Requires a compatible Mac with Apple Intelligence enabled; ordinary dictation works without it.</p>
+          </article>
+          <article>
+            <h3>Pause without losing your place.</h3>
+            <p>Press <kbd>⌘,</kbd> to pause and open settings. Change languages, then press <kbd>Return</kbd> to resume. Your earlier words are kept.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="app-gallery wrap" aria-label="Phaedrus settings screenshots">
+        <figure>
+          <a href="media/settings-languages.png" aria-label="View the full Voice and languages screenshot">
+            <img src="media/settings-languages.png" width="800" height="642" loading="lazy"
+              alt="Light settings window with searchable languages, Portuguese and English selected, and optional language mixing" />
+          </a>
+          <figcaption>Find your languages. Switch without losing a thought.</figcaption>
+        </figure>
+        <figure>
+          <a href="media/settings-cleanup.png" aria-label="View the full Smart cleanup screenshot">
+            <img src="media/settings-cleanup.png" width="800" height="642" loading="lazy"
+              alt="Dark settings window with Apple Intelligence ready and Written selected among three review styles" />
+          </a>
+          <figcaption>Three review styles, in a native light or dark interface.</figcaption>
+        </figure>
       </section>
 
       <section
@@ -234,23 +275,22 @@ open ~/Applications/Phaedrus.app</code></pre>
             </article>
             <article class="download-install">
               <div class="option-title">
-                <h3>Try a built app</h3>
-                <span class="tag tag-outline">Test build</span>
+                <h3>Download for Mac</h3>
+                <span class="tag tag-outline">v0.2.0 · Apple silicon</span>
               </div>
               <p>
-                For Apple silicon Macs running macOS 26+. Download a ZIP from
-                the latest successful <strong>main</strong> build, under
-                <strong>Artifacts</strong>.
+                For Apple silicon Macs running macOS 26+. Get the published
+                release, ready to install without developer tools.
               </p>
               <a
                 class="button button-cream"
-                href="https://github.com/venzellucas/phaedrus/actions/workflows/build.yml"
-                >Find a test download <span aria-hidden="true">↗</span></a
+                href="https://github.com/venzellucas/phaedrus/releases/latest/download/Phaedrus-macOS-arm64.zip"
+                >Download for Apple silicon <span aria-hidden="true">↗</span></a
               >
               <p class="download-note">
-                GitHub sign-in required. Test downloads expire after 30 days.
-                Extract the ZIP and move the app to
+                Extract the ZIP, quit any running copy of Phaedrus, and move the app to
                 <code>~/Applications</code> before opening it.
+                <a href="https://github.com/venzellucas/phaedrus/releases/latest">Release notes and checksum</a>.
               </p>
               <p class="signing-note">
                 <strong>Not notarized by Apple.</strong> These builds use ad-hoc
@@ -297,17 +337,18 @@ open ~/Applications/Phaedrus.app</code></pre>
             <summary>Can I dictate in another language?</summary>
             <p>
               Yes. Open Phaedrus’s settings and choose up to three supported
-              languages. It listens in all selected languages and keeps the
-              transcript with the highest average confidence. Each extra
-              language adds processing work. Mixing languages within a sentence
-              may not work well.
+              languages. With mixing off, it keeps the best whole-recording transcript.
+              Turn on experimental language mixing to combine recognized words across
+              languages, without translating them. Each extra language adds processing
+              work, and mixed-language results can still be wrong.
             </p>
           </details>
           <details>
             <summary>What happens to my audio and text?</summary>
             <p>
               Speech recognition happens on your Mac. Phaedrus does not save
-              recordings or transcripts. The optional clipboard copy stays on
+              recordings or transcripts. Smart cleanup also runs locally through
+              Apple Intelligence. The optional clipboard copy stays on
               this Mac rather than using Universal Clipboard; clipboard managers
               may still record it. You can turn copying off in settings.
             </p>
@@ -315,10 +356,11 @@ open ~/Applications/Phaedrus.app</code></pre>
           <details>
             <summary>How do I set a keyboard shortcut?</summary>
             <p>
-              Open Phaedrus and enable “Use the 🎤 key to dictate,” or go to
+              Open Shortcuts &amp; access in Phaedrus and enable “Use the 🎤 key to dictate,” or go to
               System Settings → Keyboard → Keyboard Shortcuts → Services → Text
               → Dictate with Phaedrus. During dictation, Return and Esc are
-              handled by Phaedrus.
+              handled by Phaedrus. <kbd>⌘,</kbd> pauses and opens settings; while paused,
+              <kbd>⌘Return</kbd> finishes with the words already captured.
             </p>
           </details>
           <details>

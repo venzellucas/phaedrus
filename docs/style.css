@@ -270,50 +270,13 @@ h1 em {
 }
 .dictation-bubble {
   position: absolute;
-  bottom: -20px;
-  left: 18px;
-  right: 18px;
-  background: var(--ink);
-  color: #f5efe5;
-  border-radius: 40px;
-  min-height: 50px;
-  padding: 12px 17px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  box-shadow: 0 8px 16px #29251f1c;
-  font-size: 11px;
+  bottom: -28px;
+  left: 8px;
+  right: 8px;
 }
-.record-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #ef9d78;
-  flex-shrink: 0;
-}
-.waveform {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  height: 20px;
-  margin-left: auto;
-}
-.waveform i {
-  width: 2px;
-  background: #e8b695;
-  height: 6px;
-}
-.waveform i:nth-child(2n) {
-  height: 13px;
-}
-.waveform i:nth-child(3n) {
-  height: 19px;
-}
-.demo.is-playing .waveform i {
-  animation: wave 0.6s ease-in-out infinite alternate;
-}
-.demo.is-playing .waveform i:nth-child(2n) {
-  animation-delay: 0.2s;
+.dictation-bubble img {
+  display: block;
+  width: 100%;
 }
 .demo figcaption {
   display: flex;
@@ -368,6 +331,36 @@ h1 em {
   font-size: 15px;
   max-width: 280px;
 }
+.feature-stories article + article {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 24px;
+}
+.feature-stories h3 { margin-bottom: 10px; }
+.feature-stories p { font-size: 14px; }
+.feature-stories .feature-note { font-size: 12px; }
+.review-styles { margin: 18px 0; }
+.review-styles div {
+  display: grid;
+  grid-template-columns: 105px 1fr;
+  gap: 16px;
+  padding: 10px 0;
+}
+.review-styles dt { color: var(--rust); font-size: 13px; font-weight: 600; }
+.review-styles dd { margin: 0; color: var(--muted); font-size: 13px; }
+.app-gallery {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 26px;
+  padding-bottom: 20px;
+}
+.app-gallery img {
+  display: block;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 12px 32px #29251f0d;
+}
+.app-gallery figcaption { font-size: 12px; margin-top: 13px; }
 .steps {
   list-style: none;
   margin: 0;
@@ -666,11 +659,6 @@ kbd {
 [hidden] {
   display: none !important;
 }
-@keyframes wave {
-  to {
-    transform: scaleY(0.4);
-  }
-}
 @media (min-width: 1500px) {
   .hero {
     padding-top: 85px;
@@ -786,6 +774,7 @@ kbd {
   .demo .eyebrow {
     font-size: 10px;
   }
+  .app-gallery { grid-template-columns: 1fr; gap: 28px; }
   .principles {
     grid-template-columns: 1fr;
     gap: 24px;
@@ -933,4 +922,9 @@ kbd {
   .button:hover {
     transform: none;
   }
+}
+
+@media (max-width: 400px) {
+  h1 { font-size: 60px; }
+  .review-styles div { grid-template-columns: 1fr; gap: 3px; }
 }

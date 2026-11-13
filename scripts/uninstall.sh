@@ -8,13 +8,13 @@ ID=io.github.venzellucas.phaedrus
 zsh scripts/mic-key.sh off || true
 pkill -x Phaedrus 2>/dev/null || true
 rm -rf ~/Applications/Phaedrus.app
-# drop the shortcut entry from the Services settings
-/usr/bin/osascript -l JavaScript - "$ID - Dictate with Phaedrus - dictate" <<'JS' >/dev/null
+# drop both shortcut entries from the Services settings
+/usr/bin/osascript -l JavaScript - "$ID - Dictate with Phaedrus - dictate" "$ID - Phaedrus Settings - openSettings" <<'JS' >/dev/null
 function run(argv) {
   ObjC.import('Foundation');
   const d = $.NSUserDefaults.alloc.initWithSuiteName('pbs');
   const all = ObjC.deepUnwrap(d.dictionaryForKey('NSServicesStatus')) || {};
-  delete all[argv[0]];
+  for (const key of argv) delete all[key];
   d.setObjectForKey($(all), 'NSServicesStatus');
   d.synchronize;
 }
