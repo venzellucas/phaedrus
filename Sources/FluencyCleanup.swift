@@ -99,7 +99,7 @@ enum FluencyCleanup {
         if cursor < original.count {
             let tail = Array(original[cursor...].map(\.key))
             let preceding = Array(original[..<cursor].map(\.key))
-            guard tail.allSatisfy(fillerWords.contains)
+            guard isFillerTail(tail)
                 || (tail.count <= preceding.count && Array(preceding.suffix(tail.count)) == tail) else { return nil }
         }
         var removedRun = 0
@@ -134,7 +134,19 @@ enum FluencyCleanup {
     private static func matches(_ pattern: String, in text: String) -> [NSTextCheckingResult] {
         (try? NSRegularExpression(pattern: pattern).matches(in: text, range: NSRange(text.startIndex..., in: text))) ?? []
     }
-    private static let fillerWords = Set("uh um er ah eh hum hmm hmmm tipo né neh assim então enfim bom bem sabe like well okay ok actually basically literally you know i mean".split(separator: " ").map(String.init))
+    private static let fillerWords = Set("uh um er ah eh é hum hmm hmmm tipo né neh assim então enfim bom bem sabe like well okay ok actually basically literally".split(separator: " ").map(String.init))
+    private static func isFillerTail(_ words: [String]) -> Bool {
+        let phrases = [["you", "know"], ["i", "mean"], ["kind", "of"], ["sort", "of"]]
+        var i = 0
+        while i < words.count {
+            if let phrase = phrases.first(where: { Array(words[i...].prefix($0.count)) == $0 }) {
+                i += phrase.count
+            } else if fillerWords.contains(words[i]) {
+                i += 1
+            } else { return false }
+        }
+        return true
+    }
     private static let criticalWords = Set("não nao nunca jamais nem sem só somente apenas exceto talvez no not never neither nor without unless only except maybe perhaps could might must should can't cannot won't wouldn't shouldn't couldn't isn't aren't wasn't weren't don't doesn't didn't zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion um uma dois duas três tres quatro cinco seis sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezasseis dezessete dezassete dezoito dezenove dezanove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento duzentos trezentos quatrocentos quinhentos seiscentos setecentos oitocentos novecentos mil milhão milhões bilhão bilhões uno una dos cuatro seis siete ocho nueve diez cien sin ni solo quizás".split(separator: " ").map(String.init))
     private static let commonCapitals = fillerWords.union("a o os as eu nós nos você vocês voce voces ele ela eles elas isso isto esse essa este esta e mas ou se de do da dos das em para por que porque como quando the i we you he she it they this that these those and but or if to of for in on with please preciso quero vou vamos can is are".split(separator: " ").map(String.init))
 
