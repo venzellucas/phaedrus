@@ -80,7 +80,10 @@ enum SessionSettingsTests {
 
     static func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
         checks += 1
-        precondition(condition(), message)
+        guard condition() else {
+            FileHandle.standardError.write(Data("FAIL: \(message)\n".utf8))
+            exit(1)
+        }
     }
 
     static func main() {
@@ -91,9 +94,14 @@ enum SessionSettingsTests {
         // entire test here catches settings tasks that depend on that blocked queue.
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
+                FileHandle.standardOutput.write(Data("Checking cleanup availability dialogs\n".utf8))
                 checkCleanupSettings()
+                FileHandle.standardOutput.write(Data("Checking cleanup style preferences\n".utf8))
                 checkCleanupPreferences()
-                for scenario in Scenario.allCases { run(scenario) }
+                for scenario in Scenario.allCases {
+                    FileHandle.standardOutput.write(Data("Checking session: \(scenario)\n".utf8))
+                    run(scenario)
+                }
                 Prefs.d.removeVolatileDomain(forName: "NSArgumentDomain")
                 print("Passed \(checks) native session/settings checks")
                 exit(0)
