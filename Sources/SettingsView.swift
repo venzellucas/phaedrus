@@ -606,7 +606,6 @@ struct SmartCleanupSettings: View {
                         .accessibilityLabel(style.title + ". " + summary(style))
                         .accessibilityAddTraits(m.cleanupStyle == style ? .isSelected : [])
                         .disabled(!m.smartCleanup)
-                        .opacity(m.smartCleanup ? 1 : 0.55)
                     }
                 }
                 DisclosureGroup("What \(m.cleanupStyle.title) changes") {

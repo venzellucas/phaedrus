@@ -108,6 +108,7 @@ struct SettingsToggle: View {
                 Text(title).fontWeight(.medium)
                 if let detail { SettingsNote(detail) }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .toggleStyle(.switch)
     }

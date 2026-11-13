@@ -50,7 +50,8 @@ labels, keyboard focus, increased-contrast borders, and the existing motion/tran
 accessibility behavior when adding components.
 
 `scripts/preview-hud.sh` captures all four settings pages in light/dark appearance, setup
-needed, a compact paused window, increased contrast, and every recording state. These are
+needed, a compact paused window, a high-contrast window appearance, and every recording state.
+System accessibility preferences still require the interactive checks below. These are
 real native views with synthetic data, not screenshots of a web mockup. Inspect them with:
 
 ```sh

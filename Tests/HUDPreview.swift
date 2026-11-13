@@ -81,14 +81,14 @@ enum HUDPreview {
         controls.isPaused = paused
         controls.hasText = paused
         let view = SettingsView(m: model, pausedDictation: controls, initialPage: page)
-            .environment(\.colorScheme, dark ? .dark : .light)
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.isReleasedWhenClosed = false
         window.appearance = NSAppearance(named: highContrast
             ? (dark ? .accessibilityHighContrastDarkAqua : .accessibilityHighContrastAqua)
             : (dark ? .darkAqua : .aqua))
         window.setContentSize(NSSize(width: compact ? 780 : 800, height: compact ? 620 : 680))
-        window.orderFrontRegardless()
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
         defer { window.close() }
         // Hosting views need a completed layout pass before bitmap capture.
         let end = Date().addingTimeInterval(0.4)
