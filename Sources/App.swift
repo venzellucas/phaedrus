@@ -60,6 +60,7 @@ enum Prefs {
     static var playSounds: Bool { flag("playSounds", true) }
     static var mixLanguages: Bool { flag("mixLanguages", false) }
     static var smartCleanup: Bool { flag("smartCleanup", false) }
+    static var cleanupStyle: CleanupStyle { CleanupStyle(rawValue: d.string(forKey: "cleanupStyle") ?? "") ?? .conservative }
     static func sound(_ name: String) { if playSounds { NSSound(named: name)?.play() } }
 }
 
@@ -123,6 +124,7 @@ final class Controller: NSObject, NSApplicationDelegate {
     private let hud = HUD()
     private let keys = HotKeys()
     private let makeEngine: @Sendable () -> any DictationRecognizing
+    private let cleanTranscript: @Sendable (String, [String], CleanupPlan?, CleanupStyle) async -> String
     private let pausedDictation = PausedDictationControls()
     private var busy = false
     private var inServiceCall = false
@@ -145,8 +147,10 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var segmentSeconds = 0.0
     private var segmentCanPause = true
 
-    init(engineFactory: @escaping @Sendable () -> any DictationRecognizing = { DictationEngine() }) {
+    init(engineFactory: @escaping @Sendable () -> any DictationRecognizing = { DictationEngine() },
+         cleanup: @escaping @Sendable (String, [String], CleanupPlan?, CleanupStyle) async -> String = SmartCleanup.process) {
         makeEngine = engineFactory
+        cleanTranscript = cleanup
         super.init()
     }
 
@@ -393,6 +397,8 @@ final class Controller: NSObject, NSApplicationDelegate {
         let locales = Prefs.locales
         let mixLanguages = Prefs.mixLanguages
         let smartCleanup = Prefs.smartCleanup
+        let cleanupStyle = Prefs.cleanupStyle
+        let cleanup = cleanTranscript
         hud.languages(locales)
         let startupTask = Task.detached {
             defer { startupSettled.set() }
@@ -507,21 +513,21 @@ final class Controller: NSObject, NSApplicationDelegate {
                         let out = try await engine.stop(cancel: req == .cancel)
                         dlog("stopped: \(out.map { "\($0.text.count) chars, \($0.localeIDs.joined(separator: "+")), confidence \(String(format: "%.2f", $0.confidence))" } ?? "no text")")
                         var text = out?.text
-                        if let plan = out?.cleanupPlan, !Task.isCancelled {
+                        if smartCleanup, let out, out.cleanupPlan != nil || cleanupStyle == .natural, !Task.isCancelled {
                             let ready = await withCheckedContinuation { continuation in
                                 onMainRunLoop { [weak self] in
                                     guard let self, self.sessionID == id, !self.finished else {
                                         continuation.resume(returning: false)
                                         return
                                     }
-                                    self.resultText = plan.fallback.text
+                                    self.resultText = out.text
                                     self.refiningSince = Date()
                                     self.hud.status("Refining…")
                                     continuation.resume(returning: true)
                                 }
                             }
                             guard ready else { return }
-                            text = await SmartCleanup.refine(plan).text
+                            text = await cleanup(out.text, locales, out.cleanupPlan, cleanupStyle)
                         }
                         let finalText = text
                         onMainRunLoop { [weak self] in
@@ -543,7 +549,7 @@ final class Controller: NSObject, NSApplicationDelegate {
             if let refiningSince {
                 // The async deadline normally returns first. Keep the finalized
                 // transcript even if a framework/scheduler stalls during cleanup.
-                if now.timeIntervalSince(refiningSince) > SmartCleanup.timeoutSeconds + 1 {
+                if now.timeIntervalSince(refiningSince) > cleanupStyle.timeoutSeconds + 1 {
                     completionTask?.cancel()
                     finished = true
                 }

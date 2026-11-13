@@ -62,10 +62,20 @@ private final class RecognizerFactory: @unchecked Sendable {
     }
 }
 
+private final class CleanupProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _styles: [CleanupStyle] = []
+    var styles: [CleanupStyle] { lock.withLock { _styles } }
+    func apply(_ style: CleanupStyle) -> String {
+        lock.withLock { _styles.append(style) }
+        return "Cleaned."
+    }
+}
+
 @main
 @MainActor
 enum SessionSettingsTests {
-    enum Scenario: CaseIterable { case resume, finish, cancel, failedResume, startupPause, silentResume, timeBudget }
+    enum Scenario: CaseIterable { case resume, finish, cancel, failedResume, startupPause, silentResume, timeBudget, naturalCleanup }
     static var checks = 0
 
     static func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
@@ -82,6 +92,7 @@ enum SessionSettingsTests {
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 checkCleanupSettings()
+                checkCleanupPreferences()
                 for scenario in Scenario.allCases { run(scenario) }
                 Prefs.d.removeVolatileDomain(forName: "NSArgumentDomain")
                 print("Passed \(checks) native session/settings checks")
@@ -138,6 +149,27 @@ enum SessionSettingsTests {
         waitUntil("Ready dialog must dismiss") { window.attachedSheet == nil }
     }
 
+    static func checkCleanupPreferences() {
+        for value in ["", "unknown", "natural"] {
+            Prefs.d.setVolatileDomain(["locales": ["pt_BR", "en_US"], "smartCleanup": true,
+                                      "cleanupStyle": value], forName: "NSArgumentDomain")
+            let expected: CleanupStyle = value == "natural" ? .natural : .conservative
+            let model = SettingsModel(cleanupAvailabilityCheck: { _ in nil })
+            expect(model.cleanupStyle == expected && Prefs.cleanupStyle == expected, "Read the saved style with a conservative default")
+            if value == "natural", CommandLine.arguments.count > 1 {
+                model.refreshCleanupAvailability()
+                let view = Form { SmartCleanupSettings(m: model) }.formStyle(.grouped).frame(width: 480, height: 420)
+                let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+                window.isReleasedWhenClosed = false
+                window.makeKeyAndOrderFront(nil)
+                let path = URL(fileURLWithPath: CommandLine.arguments[1]).deletingLastPathComponent()
+                    .appendingPathComponent("natural-cleanup.png").path
+                savePreview(window, path: path)
+                window.close()
+            }
+        }
+    }
+
     static func waitUntil(_ message: String, condition: () -> Bool) {
         let deadline = Date().addingTimeInterval(5)
         repeat {
@@ -151,16 +183,20 @@ enum SessionSettingsTests {
 
     static func run(_ scenario: Scenario) {
         let preferences: [String: Any] = ["locales": ["en_US"], "playSounds": false,
-            "smartCleanup": false, "mixLanguages": false, "silenceSeconds": 0.1,
+            "smartCleanup": scenario == .naturalCleanup, "cleanupStyle": "natural", "mixLanguages": false, "silenceSeconds": 0.1,
             "noSpeechSeconds": 0.6, "maxSeconds": scenario == .timeBudget ? 1.4 : 30.0]
         Prefs.d.setVolatileDomain(preferences, forName: "NSArgumentDomain")
         var specs = [FakeRecognizer.Spec()]
         if scenario == .startupPause { specs[0].startDelay = 2 }
-        if ![.finish, .cancel].contains(scenario) {
+        if ![.finish, .cancel, .naturalCleanup].contains(scenario) {
             specs.append(.init(text: scenario == .silentResume ? nil : "Olá.", failStart: scenario == .failedResume))
         }
         let factory = RecognizerFactory(specs)
-        let controller = Controller(engineFactory: { factory.make() })
+        let cleanup = CleanupProbe()
+        let controller = Controller(engineFactory: { factory.make() }, cleanup: { text, _, plan, style in
+            precondition(text == "Hello." && plan == nil, "Natural runs even without timed alternatives")
+            return cleanup.apply(style)
+        })
         controller.onceMode = true
         NSApp.delegate = controller
         controller.applicationDidFinishLaunching(Notification(name: NSApplication.didFinishLaunchingNotification))
@@ -204,7 +240,7 @@ enum SessionSettingsTests {
                     }
                     if scenario == .timeBudget && Date().timeIntervalSince(pausedSince!) < 1.2 { return }
                     switch scenario {
-                    case .finish: controls.action = .finish
+                    case .finish, .naturalCleanup: controls.action = .finish
                     case .cancel: HotKeys.handler?(.cancel)
                     default:
                         var updated = Prefs.d.volatileDomain(forName: "NSArgumentDomain")
@@ -236,7 +272,9 @@ enum SessionSettingsTests {
         case .finish, .failedResume, .silentResume: "Hello."
         case .startupPause: "Olá."
         case .resume, .timeBudget: "Hello. Olá."
+        case .naturalCleanup: "Cleaned."
         }
+        expect(cleanup.styles == (scenario == .naturalCleanup ? [.natural] : []), "Run Natural only when Smart cleanup is enabled")
         expect(result == expected, "Preserve/finish/cancel the entire draft correctly: \(scenario)")
         expect(factory.engines.allSatisfy { !$0.running }, "Every microphone is stopped after a session")
         if factory.engines.count == 2 {

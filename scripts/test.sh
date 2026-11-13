@@ -8,3 +8,5 @@ swiftc -O -swift-version 6 Sources/TranscriptMerger.swift Tests/TranscriptMerger
 "$test_dir/merge-tests"
 swiftc -O -swift-version 6 Sources/TranscriptMerger.swift Sources/CleanupPlan.swift Sources/CleanupDeadline.swift Tests/SmartCleanupTests.swift -o "$test_dir/cleanup-tests"
 "$test_dir/cleanup-tests"
+swiftc -O -swift-version 6 Sources/CleanupDeadline.swift Sources/FluencyCleanup.swift Tests/FluencyCleanupTests.swift -o "$test_dir/fluency-tests"
+"$test_dir/fluency-tests"

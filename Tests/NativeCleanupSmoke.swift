@@ -18,5 +18,14 @@ enum NativeCleanupSmoke {
                          "Only missing terminal punctuation may change")
             print("Native cleanup bounded-output smoke check passed; bilingual accuracy still needs evaluation")
         }
+        // Exercise Natural even when no timed-word cleanup plan exists.
+        let spoken = "Uh, I I need the pull request today."
+        let natural = await SmartCleanup.process(text: spoken, localeIDs: ["en_US"], plan: nil, style: .natural)
+        if unavailable != nil {
+            precondition(natural == spoken, "Unavailable model must preserve Natural input")
+        } else {
+            precondition(FluencyCleanup.validated(natural, source: spoken) != nil, "Natural output must satisfy its validation")
+        }
+        print("Native Natural cleanup success/fallback check passed; fluency quality still needs real model evaluation")
     }
 }

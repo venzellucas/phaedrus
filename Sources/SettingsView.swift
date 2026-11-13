@@ -115,6 +115,7 @@ final class SettingsModel: ObservableObject {
     @Published var playSounds: Bool { didSet { d.set(playSounds, forKey: "playSounds") } }
     @Published var mixLanguages: Bool { didSet { d.set(mixLanguages, forKey: "mixLanguages") } }
     @Published var smartCleanup: Bool { didSet { d.set(smartCleanup, forKey: "smartCleanup") } }
+    @Published var cleanupStyle: CleanupStyle { didSet { d.set(cleanupStyle.rawValue, forKey: "cleanupStyle") } }
     @Published var cleanupUnavailable: String? = "Checking Apple Intelligence…"
     @Published var showingCleanupAvailability = false
 
@@ -134,6 +135,7 @@ final class SettingsModel: ObservableObject {
         playSounds = Prefs.playSounds
         mixLanguages = Prefs.mixLanguages
         smartCleanup = Prefs.smartCleanup
+        cleanupStyle = Prefs.cleanupStyle
     }
 
     func refresh() {
@@ -362,9 +364,17 @@ struct SmartCleanupSettings: View {
         Section("Smart cleanup") {
             Toggle("Use on-device Smart cleanup (experimental)", isOn: $m.smartCleanup)
                 .disabled(m.cleanupUnavailable != nil && !m.smartCleanup)
+            Picker("Review style", selection: $m.cleanupStyle) {
+                ForEach(CleanupStyle.allCases, id: \.self) { Text($0.title).tag($0) }
+            }
+            .disabled(!m.smartCleanup)
             Text("Uses Apple Intelligence to choose between recognized words and add missing sentence-ending punctuation. Enable language mixing above to compare languages. Your words stay on this Mac.")
                 .font(.caption).foregroundStyle(.secondary)
-            Text("May take up to five seconds. If cleanup is unavailable or fails, Phaedrus uses the existing transcript.")
+            Text(m.cleanupStyle == .natural
+                 ? "Natural removes accidental repetitions, fillers, and abandoned starts, and adjusts punctuation. Keeps the remaining words in their original language and order. Cuts can still change meaning; review the result."
+                 : "Conservative chooses recognized alternatives and adds missing final punctuation. Keeps repetitions and spoken fillers.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("May take up to \(Int(m.cleanupStyle.timeoutSeconds)) seconds. If a passage cannot be reviewed, its existing text is kept.")
                 .font(.caption).foregroundStyle(.secondary)
             if let reason = m.cleanupUnavailable {
                 Label("Setup needed", systemImage: "exclamationmark.circle").font(.callout)

@@ -30,6 +30,9 @@ Native session tests use fake recognizers to exercise the actual nested event lo
 loading, menu command, pause/resume, startup cancellation, failed restart, and saved text.
 They also inject cleanup availability to verify repeated manual checks present native dialogs,
 automatic refreshes stay quiet, and readiness changes leave cleanup opt-in.
+They verify the saved review style and that Natural runs without timed alternatives only
+when cleanup is enabled. Natural fixtures cover Portuguese/English cuts, identifiers and
+negations, incomplete output, paragraph preservation, long input, and partial timeout results.
 The alignment and cleanup checks use synthetic timed transcripts and injected model decisions;
 passing them does not establish recognition accuracy or model quality on real bilingual audio.
 The native cleanup smoke check verifies the unavailable-model fallback on CI machines without
@@ -75,12 +78,20 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   an unchanged status twice: each click must open a result dialog. Open System Settings from
   the dialog, choose Apple Intelligence & Siri, and confirm returning refreshes availability.
   An availability check must not enable cleanup or start inference. Recheck
-  after enabling Apple Intelligence in System Settings. With mixing off, only missing final
+  after enabling Apple Intelligence in System Settings. With Conservative and mixing off, only missing final
   punctuation may change. With mixing on, compare the same bilingual recordings with cleanup
   enabled/disabled, especially names, numbers, negations, technical terms, and dictated commands.
   Measure the extra finishing time; test long dictations and unavailable-model fallback.
   The panel should say “Refining…” only after recognition finishes, and an inference failure
   must still insert the existing transcript. Never log prompt or model-error text.
+- Switch **Review style** between Conservative and Natural, relaunch, and confirm it is saved.
+  Compare “Eu, tipo, eu queria fazer o deploy, né.”, “Uh, I I need the pull request today”,
+  “Não, não quero fazer isso”, “Eu não quero esse tipo de mudança”, and “It's very, very
+  important”. Natural should remove disfluencies while retaining meaningful uses of fillers,
+  emphasis, names, numbers, uncertainty, and negations. Also test single-language input,
+  multiple paragraphs, long dictations, and no-timing fallbacks. A valid but unchanged result
+  is allowed; synthetic fixtures do not establish actual model fluency. Both review stages
+  together must return within ten seconds in Natural, preserving all unprocessed text.
 - If changing shortcuts, check enabling and disabling the mic key, a login with the
   remap enabled, and preservation of unrelated `hidutil` mappings.
 

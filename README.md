@@ -19,7 +19,7 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 - **On-device.** Uses Apple's `SpeechAnalyzer` / `SpeechTranscriber` (macOS 26). No cloud service, no API key, no subscription. Your audio never leaves the Mac.
 - **Optional language detection.** Starts with English (US). Select up to three languages in settings to listen in all of them and keep the transcript that fits best.
 - **Experimental language mixing.** Optionally combine words from the selected languages in one dictation, without translating them. This runs on-device and is off by default.
-- **Optional Smart cleanup.** Apple Intelligence can use sentence context to choose between recognized alternatives and add missing final punctuation. Runs on-device, with a five-second deadline and automatic fallback. Off by default.
+- **Optional Smart cleanup.** Apple Intelligence chooses recognized alternatives using sentence context. Choose Natural review to also remove spoken repetitions and fillers. Runs on-device, with a time limit and automatic fallback. Off by default.
 - **Quiet recording UI.** A smooth colored ribbon responds to microphone input, with elapsed time and all selected language codes. No distracting live transcript.
 - **Change languages while dictating.** Press ⌘, to pause and open Settings. Resume with new languages while keeping your earlier words.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
@@ -106,6 +106,7 @@ the dictation shortcut; no global shortcut is assigned automatically.
 | Languages (up to 3) | English (US) |
 | Mix languages in one dictation (experimental) | off |
 | Use on-device Smart cleanup (experimental) | off |
+| Review style | Conservative (Natural is optional) |
 | Stop after silence | 3 s |
 | Give up if nothing is heard | 10 s |
 | Longest dictation | 5 min (up to 15) |
@@ -136,8 +137,9 @@ after silence** can help avoid finishing the recording too soon.
 
 Enable **Use on-device Smart cleanup (experimental)** in Settings. The settings show whether
 Apple Intelligence and all selected languages are available on this Mac. Enable language
-mixing too if you want the model to choose between Portuguese/English alternatives; with
-mixing off, cleanup can only add missing final punctuation.
+mixing too if you want the model to choose between Portuguese/English alternatives. Choose
+**Review style → Natural** to also clean up spoken repetitions, fillers, and abandoned starts.
+The saved style defaults to **Conservative**, preserving the previous behavior.
 
 **Check availability** shows a result dialog even when the status hasn't changed. It checks
 readiness; it doesn't enable Apple Intelligence or download its model. If Apple Intelligence
@@ -146,18 +148,36 @@ Return to Phaedrus after macOS has prepared the model; availability refreshes wh
 becomes active. Once ready, turn on the Smart cleanup switch. Cleanup runs after dictation,
 not when you click Check availability. Unsupported selected languages are listed by name.
 
-After speech recognition finishes, the panel may briefly say **Refining…**. A local language
-model receives short disputed passages, their recognized alternatives and confidence scores,
+After speech recognition finishes, the panel may briefly say **Refining…**. In the conservative
+stage, the local model receives short disputed passages, recognized alternatives and confidence scores,
 and nearby sentence context. It returns option IDs, never replacement prose. Phaedrus then
 assembles the selected recognition tokens and checks their audio boundaries again. High-confidence
 words, numerals, capitalized names, and common code/URL spellings are conservatively protected.
-Punctuation cleanup only adds a missing final `.`, `?`, or `!`; it doesn't rewrite sentences.
+Conservative punctuation cleanup only adds a missing final `.`, `?`, or `!`. With mixing off,
+Conservative can only add this final punctuation.
 
 One request reviews at most six disputed passages, with a bounded prompt. Additional passages
 retain the existing transcript, so long dictations are never truncated. Unavailable models,
 unsupported languages, refusal, invalid output, and inference errors keep the existing result.
-Cleanup waits at most five seconds for the model, then uses that same fallback. Audio and text
-stay on the Mac; no server, API key, or separately managed model is needed.
+Conservative waits at most five seconds for the model, then uses that same fallback.
+
+**Natural** adds a pass over the resulting text, even for a single selected language or a
+transcript without word timings. It can turn “Eu, tipo, eu queria fazer o deploy, né.” into
+“Eu queria fazer o deploy.” This is an illustrative target, not a guaranteed model result.
+The model decides which words are disfluencies based on context; “tipo” in “esse tipo de
+mudança” and intentional emphasis should remain. It can remove words and adjust punctuation
+and capitalization; it cannot add words, paraphrase, reorder clauses, or translate the text.
+
+Natural processes short chunks (up to 120 whitespace-separated words / 1,800 UTF-8 bytes),
+with a **ten-second total budget**, including the conservative stage. It preserves paragraph
+separators, completed valid edits, and every unprocessed or rejected chunk. Long dictations
+may therefore be only partially reviewed. Fresh model sessions keep context bounded.
+Validation rejects obvious truncation, empty output, excessive cuts, new or reordered words,
+and changes to detected names, numbers, negations, and technical identifiers. These checks
+cannot prove that a cut preserves meaning. Natural may remove an intended word; review the
+result and switch back to Conservative when you need a closer transcript.
+
+Both styles run entirely on the Mac; no server, API key, or separately managed model is needed.
 
 This is experimental. A contextually plausible choice can still be wrong, and the model cannot
 hear the original audio. Compare enabled/disabled results on your own recordings before relying
@@ -182,6 +202,7 @@ continues to work without Apple Intelligence.
 | `Sources/CleanupPlan.swift` | Bounded alternative choices, protected words, prompt construction, and validation/reconstruction of model choices. |
 | `Sources/SmartCleanup.swift` | Optional on-device Foundation Models integration and availability checks. |
 | `Sources/CleanupDeadline.swift` | Cancellation and a deadline that also returns promptly when inference ignores cancellation. |
+| `Sources/FluencyCleanup.swift` | Natural review style, bounded text chunks, deletion/punctuation validation, and preservation of unprocessed text. |
 | `Sources/HUD.swift` | Rounded recording panel, microphone-driven ribbon, elapsed time, and listening/finishing/error states. Respects Reduce Motion and Increase Contrast. |
 | `Sources/App.swift` | Dictation/Settings Services, temporary global keys, pause/resume, and the session loop. Carbon hotkeys are released while editing Settings, and a fresh recognizer uses the new selection on resume. |
 | `Sources/SettingsView.swift` | The SwiftUI settings window. |
