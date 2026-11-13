@@ -3,9 +3,31 @@
 import Foundation
 
 enum CleanupStyle: String, CaseIterable, Sendable {
-    case conservative, natural
-    var title: String { self == .natural ? "Natural" : "Conservative" }
-    var timeoutSeconds: Double { self == .natural ? 10 : 5 }
+    case conservative, natural, written
+    var title: String {
+        switch self {
+        case .conservative: "Conservative"
+        case .natural: "Natural"
+        case .written: "Written"
+        }
+    }
+    var timeoutSeconds: Double {
+        switch self {
+        case .conservative: 5
+        case .natural: 10
+        case .written: 15
+        }
+    }
+    var explanation: String {
+        switch self {
+        case .conservative:
+            "Conservative chooses recognized alternatives and adds missing final punctuation. Keeps repetitions and spoken fillers."
+        case .natural:
+            "Natural removes accidental repetitions, fillers, and abandoned starts, and adjusts punctuation. Keeps the remaining words in their original language and order. Cuts can still change meaning; review the result."
+        case .written:
+            "Written also corrects grammar, spelling, and likely recognition mistakes using context. Aims to keep your voice, grammatical person, meaning, language switches, and order of ideas. It can replace words and make incorrect guesses; review the result."
+        }
+    }
 }
 
 enum FluencyCleanup {
@@ -20,6 +42,7 @@ enum FluencyCleanup {
     /// Preserve separators and unprocessed chunks exactly. A shared deadline
     /// bounds the whole pass, including a provider that ignores cancellation.
     static func refine(_ text: String, localeIDs: [String], seconds: Double,
+                       validation: @escaping @Sendable (String, String, [String]) -> String? = FluencyCleanup.validated,
                        rewriting: @escaping @Sendable (String) async throws -> String?) async -> String {
         let pieces = parts(text)
         var result = pieces.map(\.text)
@@ -35,7 +58,7 @@ enum FluencyCleanup {
             let response = await CleanupDeadline.run(seconds: budget) { try await rewriting(prompt) }
             guard !Task.isCancelled else { return text }
             guard let response, let rewritten = response else { break }
-            if let accepted = validated(rewritten, source: piece.text, localeIDs: localeIDs) {
+            if let accepted = validation(rewritten, piece.text, localeIDs) {
                 result[i] = accepted
             } else if let partial = salvagingRepetitions(rewritten, source: piece.text, localeIDs: localeIDs) {
                 result[i] = partial
@@ -186,7 +209,7 @@ enum FluencyCleanup {
     private static func matches(_ pattern: String, in text: String) -> [NSTextCheckingResult] {
         (try? NSRegularExpression(pattern: pattern).matches(in: text, range: NSRange(text.startIndex..., in: text))) ?? []
     }
-    private static let fillerWords = Set("uh um er ah eh é hum hmm hmmm tipo né neh assim então enfim bom bem sabe like well okay ok actually basically literally".split(separator: " ").map(String.init))
+    static let fillerWords = Set("uh um er ah eh é hum hmm hmmm tipo né neh assim então enfim bom bem sabe like well okay ok actually basically literally".split(separator: " ").map(String.init))
     private static func isFillerTail(_ words: [String]) -> Bool {
         let phrases = [["you", "know"], ["i", "mean"], ["kind", "of"], ["sort", "of"]]
         var i = 0
@@ -199,11 +222,11 @@ enum FluencyCleanup {
         }
         return true
     }
-    private static let criticalWords = Set("não nao nunca jamais nem sem só somente apenas exceto talvez no not never neither nor without unless only except maybe perhaps could might must should can't cannot won't wouldn't shouldn't couldn't isn't aren't wasn't weren't don't doesn't didn't zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion um uma dois duas três tres quatro cinco seis sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezasseis dezessete dezassete dezoito dezenove dezanove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento duzentos trezentos quatrocentos quinhentos seiscentos setecentos oitocentos novecentos mil milhão milhões bilhão bilhões uno una dos cuatro seis siete ocho nueve diez cien sin ni solo quizás".split(separator: " ").map(String.init))
+    static let criticalWords = Set("não nao nunca jamais nem sem só somente apenas exceto talvez no not never neither nor without unless only except maybe perhaps could might must should can't cannot won't wouldn't shouldn't couldn't isn't aren't wasn't weren't don't doesn't didn't zero one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty thirty forty fifty sixty seventy eighty ninety hundred thousand million billion um uma dois duas três tres quatro cinco seis sete oito nove dez onze doze treze catorze quatorze quinze dezesseis dezasseis dezessete dezassete dezoito dezenove dezanove vinte trinta quarenta cinquenta sessenta setenta oitenta noventa cem cento duzentos trezentos quatrocentos quinhentos seiscentos setecentos oitocentos novecentos mil milhão milhões bilhão bilhões uno una dos cuatro seis siete ocho nueve diez cien sin ni solo quizás".split(separator: " ").map(String.init))
     // ASR often capitalizes discourse markers after a pause. Capitalization
     // alone must not turn "So", "Yeah", or "Just" into protected names. This
     // does not remove them automatically; the model still considers context.
-    private static let commonCapitals = fillerWords.union("a o os as eu nós nos você vocês voce voces ele ela eles elas isso isto esse essa este esta e mas ou se de do da dos das em para por que porque como quando the i we you he she it they this that these those and but or if to of for in on with please preciso quero vou vamos can is are so yeah just".split(separator: " ").map(String.init))
+    static let commonCapitals = fillerWords.union("a o os as eu nós nos você vocês voce voces ele ela eles elas isso isto esse essa este esta e mas ou se de do da dos das em para por que porque como quando the i we you he she it they this that these those and but or if to of for in on with please preciso quero vou vamos can is are so yeah just".split(separator: " ").map(String.init))
 
     private static func protectedWords(_ words: [Word], names: Set<String>, protectUm: Bool) -> [String] {
         var result: [String] = []
@@ -217,7 +240,7 @@ enum FluencyCleanup {
         return result
     }
 
-    private static func technicalAtoms(_ text: String) -> [String] {
+    static func technicalAtoms(_ text: String) -> [String] {
         text.split(whereSeparator: \.isWhitespace).compactMap { atom in
             guard atom.contains(where: { "@/\\_=$#%+*<>|&`".contains($0) })
                 || atom.contains(where: \.isNumber)

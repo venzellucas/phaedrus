@@ -368,11 +368,9 @@ struct SmartCleanupSettings: View {
                 ForEach(CleanupStyle.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .disabled(!m.smartCleanup)
-            Text("Uses Apple Intelligence to choose between recognized words and add missing sentence-ending punctuation. Enable language mixing above to compare languages. Your words stay on this Mac.")
+            Text("Uses Apple Intelligence to review dictation on this Mac. Enable language mixing above to compare recognized alternatives across languages.")
                 .font(.caption).foregroundStyle(.secondary)
-            Text(m.cleanupStyle == .natural
-                 ? "Natural removes accidental repetitions, fillers, and abandoned starts, and adjusts punctuation. Keeps the remaining words in their original language and order. Cuts can still change meaning; review the result."
-                 : "Conservative chooses recognized alternatives and adds missing final punctuation. Keeps repetitions and spoken fillers.")
+            Text(m.cleanupStyle.explanation)
                 .font(.caption).foregroundStyle(.secondary)
             Text("May take up to \(Int(m.cleanupStyle.timeoutSeconds)) seconds. If a passage cannot be reviewed, its existing text is kept.")
                 .font(.caption).foregroundStyle(.secondary)

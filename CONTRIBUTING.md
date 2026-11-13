@@ -30,9 +30,11 @@ Native session tests use fake recognizers to exercise the actual nested event lo
 loading, menu command, pause/resume, startup cancellation, failed restart, and saved text.
 They also inject cleanup availability to verify repeated manual checks present native dialogs,
 automatic refreshes stay quiet, and readiness changes leave cleanup opt-in.
-They verify the saved review style and that Natural runs without timed alternatives only
+They verify the saved review style and that Natural/Written run without timed alternatives only
 when cleanup is enabled. Natural fixtures cover Portuguese/English cuts, identifiers and
 negations, incomplete output, paragraph preservation, long input, and partial timeout results.
+Written fixtures also cover grammar, contractions, spelling corrections, speaker changes,
+content-word reordering, modality, and preservation of names and numbers.
 The alignment and cleanup checks use synthetic timed transcripts and injected model decisions;
 passing them does not establish recognition accuracy or model quality on real bilingual audio.
 The native cleanup smoke check verifies the unavailable-model fallback on CI machines without
@@ -84,7 +86,7 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   Measure the extra finishing time; test long dictations and unavailable-model fallback.
   The panel should say “Refining…” only after recognition finishes, and an inference failure
   must still insert the existing transcript. Never log prompt or model-error text.
-- Switch **Review style** between Conservative and Natural, relaunch, and confirm it is saved.
+- Switch **Review style** between Conservative, Natural, and Written, relaunch, and confirm it is saved.
   Compare “Eu, tipo, eu queria fazer o deploy, né.”, “Uh, I I need the pull request today”,
   “Não, não quero fazer isso”, “Eu não quero esse tipo de mudança”, and “It's very, very
   important”. Natural should remove disfluencies while retaining meaningful uses of fillers,
@@ -92,6 +94,12 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   multiple paragraphs, long dictations, and no-timing fallbacks. A valid but unchanged result
   is allowed; synthetic fixtures do not establish actual model fluency. Both review stages
   together must return within ten seconds in Natural, preserving all unprocessed text.
+- In Written, compare “Eu tô testando pra ver se eles vai entender”, “Eu lavei o carro”,
+  “A gente fomos buscar as criança”, and bilingual grammar errors. Check that the app
+  retains first person, tense, tone, uncertainty, negations, technical terms, and idea order.
+  Try spoken commands/questions to confirm they are edited as dictation rather than answered.
+  Review actual word substitutions carefully; fixture success cannot prove semantic fidelity.
+  Both stages share fifteen seconds, with unchanged text preserved on failure or timeout.
 - If changing shortcuts, check enabling and disabling the mic key, a login with the
   remap enabled, and preservation of unrelated `hidutil` mappings.
 

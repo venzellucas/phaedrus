@@ -27,5 +27,14 @@ enum NativeCleanupSmoke {
             precondition(FluencyCleanup.validated(natural, source: spoken) != nil, "Natural output must satisfy its validation")
         }
         print("Native Natural cleanup success/fallback check passed; fluency quality still needs real model evaluation")
+        let dictated = "Eu tô testando pra ver se eles vai entender."
+        let written = await SmartCleanup.process(text: dictated, localeIDs: ["pt_BR"], plan: nil, style: .written)
+        if SmartCleanup.unavailableReason(localeIDs: ["pt_BR"]) != nil {
+            precondition(written == dictated, "Unavailable model must preserve Written input")
+        } else {
+            precondition(WrittenCleanup.validated(written, source: dictated, localeIDs: ["pt_BR"]) != nil,
+                         "Written output must satisfy its validation")
+        }
+        print("Native Written cleanup success/fallback check passed; fidelity and grammar still need real model evaluation")
     }
 }

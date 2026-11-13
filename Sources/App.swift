@@ -513,7 +513,7 @@ final class Controller: NSObject, NSApplicationDelegate {
                         let out = try await engine.stop(cancel: req == .cancel)
                         dlog("stopped: \(out.map { "\($0.text.count) chars, \($0.localeIDs.joined(separator: "+")), confidence \(String(format: "%.2f", $0.confidence))" } ?? "no text")")
                         var text = out?.text
-                        if smartCleanup, let out, out.cleanupPlan != nil || cleanupStyle == .natural, !Task.isCancelled {
+                        if smartCleanup, let out, out.cleanupPlan != nil || cleanupStyle != .conservative, !Task.isCancelled {
                             let ready = await withCheckedContinuation { continuation in
                                 onMainRunLoop { [weak self] in
                                     guard let self, self.sessionID == id, !self.finished else {

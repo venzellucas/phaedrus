@@ -19,7 +19,7 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 - **On-device.** Uses Apple's `SpeechAnalyzer` / `SpeechTranscriber` (macOS 26). No cloud service, no API key, no subscription. Your audio never leaves the Mac.
 - **Optional language detection.** Starts with English (US). Select up to three languages in settings to listen in all of them and keep the transcript that fits best.
 - **Experimental language mixing.** Optionally combine words from the selected languages in one dictation, without translating them. This runs on-device and is off by default.
-- **Optional Smart cleanup.** Apple Intelligence chooses recognized alternatives using sentence context. Choose Natural review to also remove spoken repetitions and fillers. Runs on-device, with a time limit and automatic fallback. Off by default.
+- **Optional Smart cleanup.** Apple Intelligence chooses recognized alternatives using sentence context. Natural removes spoken repetitions and fillers; Written also corrects grammar, spelling, and likely recognition mistakes. Runs on-device, with a time limit and automatic fallback. Off by default.
 - **Quiet recording UI.** A smooth colored ribbon responds to microphone input, with elapsed time and all selected language codes. No distracting live transcript.
 - **Change languages while dictating.** Press ⌘, to pause and open Settings. Resume with new languages while keeping your earlier words.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
@@ -106,7 +106,7 @@ the dictation shortcut; no global shortcut is assigned automatically.
 | Languages (up to 3) | English (US) |
 | Mix languages in one dictation (experimental) | off |
 | Use on-device Smart cleanup (experimental) | off |
-| Review style | Conservative (Natural is optional) |
+| Review style | Conservative (Natural and Written are optional) |
 | Stop after silence | 3 s |
 | Give up if nothing is heard | 10 s |
 | Longest dictation | 5 min (up to 15) |
@@ -139,6 +139,7 @@ Enable **Use on-device Smart cleanup (experimental)** in Settings. The settings 
 Apple Intelligence and all selected languages are available on this Mac. Enable language
 mixing too if you want the model to choose between Portuguese/English alternatives. Choose
 **Review style → Natural** to also clean up spoken repetitions, fillers, and abandoned starts.
+Choose **Written** for light grammar, spelling, and contextual recognition corrections.
 The saved style defaults to **Conservative**, preserving the previous behavior.
 
 **Check availability** shows a result dialog even when the status hasn't changed. It checks
@@ -183,7 +184,27 @@ from the original text; unclear recognition, names, numbers, negations, and punc
 repetitions stay intact. Capitalized discourse markers such as “So” and “Just” are not
 automatically treated as proper names. The model still decides whether they are fillers.
 
-Both styles run entirely on the Mac; no server, API key, or separately managed model is needed.
+**Written** turns speech into lightly edited written text. It can replace words and add
+grammar words, while aiming to keep the speaker's grammatical person, tone, meaning,
+language switches, and order of ideas. For example, “Eu tô testando pra ver se eles vai
+entender” can become “Eu estou testando para ver se eles vão entender.” “Eu lavei o carro”
+must remain in first person, rather than becoming narration about a named person. These
+examples describe the intended behavior, not measured model accuracy.
+
+Written reuses bounded chunks and has a **fifteen-second total budget**. It keeps useful
+contextual recognition choices but skips a separate punctuation-only request. Validation
+checks explicit speaker markers, detected names, numbers, negations, technical identifiers,
+retained content-word order, and the size and similarity of local edits. It allows contractions,
+agreement fixes, word splits, capitalization, and paragraph breaks; unrelated additions,
+obvious summaries, translations, and truncation are rejected. Rejected rewrites can retain
+the same limited stutter cuts as Natural; every unprocessed part remains present.
+
+These are heuristic checks, not proof that the meaning is unchanged. The local model can
+guess the wrong word, and a valid edit can still change a nuance. Written is optional and
+experimental: review the output. It works from the recognized text, not the audio, and does
+not promise the same quality as another app's transcription or language model.
+
+All three styles run entirely on the Mac; no server, API key, or separately managed model is needed.
 
 This is experimental. A contextually plausible choice can still be wrong, and the model cannot
 hear the original audio. Compare enabled/disabled results on your own recordings before relying
@@ -210,6 +231,7 @@ continues to work without Apple Intelligence.
 | `Sources/SmartCleanup.swift` | Optional on-device Foundation Models integration and availability checks. |
 | `Sources/CleanupDeadline.swift` | Cancellation and a deadline that also returns promptly when inference ignores cancellation. |
 | `Sources/FluencyCleanup.swift` | Natural review style, bounded text chunks, deletion/punctuation validation, and preservation of unprocessed text. |
+| `Sources/WrittenCleanup.swift` | Written review instructions and structural checks for local grammar/spelling edits, speaker markers, protected details, and idea order. |
 | `Sources/HUD.swift` | Rounded recording panel, microphone-driven ribbon, elapsed time, and listening/finishing/error states. Respects Reduce Motion and Increase Contrast. |
 | `Sources/App.swift` | Dictation/Settings Services, temporary global keys, pause/resume, and the session loop. Carbon hotkeys are released while editing Settings, and a fresh recognizer uses the new selection on resume. |
 | `Sources/SettingsView.swift` | The SwiftUI settings window. |
