@@ -81,6 +81,7 @@ enum SessionSettingsTests {
         // entire test here catches settings tasks that depend on that blocked queue.
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
+                checkCleanupSettings()
                 for scenario in Scenario.allCases { run(scenario) }
                 Prefs.d.removeVolatileDomain(forName: "NSArgumentDomain")
                 print("Passed \(checks) native session/settings checks")
@@ -88,6 +89,64 @@ enum SessionSettingsTests {
             }
         }
         app.run()
+    }
+
+    static func checkCleanupSettings() {
+        Prefs.d.setVolatileDomain(["locales": ["pt_BR", "en_US"], "smartCleanup": false], forName: "NSArgumentDomain")
+        let disabled = "Apple Intelligence is turned off. Open System Settings → Apple Intelligence & Siri and turn it on. Return here after its model is ready."
+        var reason: String? = disabled
+        var calls = 0
+        let model = SettingsModel(cleanupAvailabilityCheck: { locales in
+            calls += 1
+            expect(locales == ["pt_BR", "en_US"], "Check readiness for every selected language")
+            return reason
+        })
+        model.refreshCleanupAvailability()
+        expect(!model.showingCleanupAvailability, "Automatic refresh must not open a dialog")
+        let view = Form { SmartCleanupSettings(m: model) }.formStyle(.grouped).frame(width: 480, height: 380)
+        let window = NSWindow(contentViewController: NSHostingController(rootView: view))
+        window.isReleasedWhenClosed = false
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+        defer { window.close() }
+
+        // An unchanged result used to look like a dead button. Verify two manual
+        // checks each present a real sheet, even inside the nested Service loop.
+        for attempt in 1...2 {
+            model.checkCleanupAvailability()
+            waitUntil("Manual availability check must show a dialog, attempt \(attempt)") {
+                window.attachedSheet != nil
+            }
+            expect(model.cleanupUnavailable == disabled, "Explain that Apple Intelligence must be enabled")
+            expect(!model.smartCleanup && !Prefs.smartCleanup, "Checking must not enable cleanup")
+            if attempt == 1, CommandLine.arguments.count > 1, let sheet = window.attachedSheet {
+                let path = URL(fileURLWithPath: CommandLine.arguments[1]).deletingLastPathComponent()
+                    .appendingPathComponent("cleanup-availability.png").path
+                savePreview(sheet, path: path)
+            }
+            model.showingCleanupAvailability = false
+            waitUntil("Availability dialog must dismiss") { window.attachedSheet == nil }
+        }
+        reason = nil // Apple Intelligence was enabled outside Phaedrus.
+        model.refreshCleanupAvailability()
+        expect(model.cleanupUnavailable == nil, "Returning from System Settings refreshes readiness")
+        expect(!model.showingCleanupAvailability && !model.smartCleanup, "Refresh leaves cleanup opt-in")
+        model.checkCleanupAvailability()
+        waitUntil("A ready model must also acknowledge a manual check") { window.attachedSheet != nil }
+        expect(calls == 5, "Every manual or automatic check reads fresh availability")
+        model.showingCleanupAvailability = false
+        waitUntil("Ready dialog must dismiss") { window.attachedSheet == nil }
+    }
+
+    static func waitUntil(_ message: String, condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(5)
+        repeat {
+            let until = Date().addingTimeInterval(0.03)
+            if let event = NSApp.nextEvent(matching: .any, until: until, inMode: .default, dequeue: true) {
+                NSApp.sendEvent(event)
+            }
+        } while !condition() && Date() < deadline
+        expect(condition(), message)
     }
 
     static func run(_ scenario: Scenario) {

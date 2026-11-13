@@ -28,6 +28,8 @@ from the Actions tab. Downloads expire after 30 days and require GitHub sign-in.
 It does not exercise real microphone input, physical key events, or Services text insertion.
 Native session tests use fake recognizers to exercise the actual nested event loop, settings
 loading, menu command, pause/resume, startup cancellation, failed restart, and saved text.
+They also inject cleanup availability to verify repeated manual checks present native dialogs,
+automatic refreshes stay quiet, and readiness changes leave cleanup opt-in.
 The alignment and cleanup checks use synthetic timed transcripts and injected model decisions;
 passing them does not establish recognition accuracy or model quality on real bilingual audio.
 The native cleanup smoke check verifies the unavailable-model fallback on CI machines without
@@ -70,6 +72,9 @@ For changes to dictation or settings, check these on a Mac and describe the resu
   missing words at language boundaries and no translation of foreign expressions.
 - Smart cleanup defaults off and survives relaunch when enabled. Settings report disabled
   Apple Intelligence, a model that isn't ready, and unsupported selected languages. Recheck
+  an unchanged status twice: each click must open a result dialog. Open System Settings from
+  the dialog, choose Apple Intelligence & Siri, and confirm returning refreshes availability.
+  An availability check must not enable cleanup or start inference. Recheck
   after enabling Apple Intelligence in System Settings. With mixing off, only missing final
   punctuation may change. With mixing on, compare the same bilingual recordings with cleanup
   enabled/disabled, especially names, numbers, negations, technical terms, and dictated commands.

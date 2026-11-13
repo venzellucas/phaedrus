@@ -139,6 +139,13 @@ Apple Intelligence and all selected languages are available on this Mac. Enable 
 mixing too if you want the model to choose between Portuguese/English alternatives; with
 mixing off, cleanup can only add missing final punctuation.
 
+**Check availability** shows a result dialog even when the status hasn't changed. It checks
+readiness; it doesn't enable Apple Intelligence or download its model. If Apple Intelligence
+is off, click **Open System Settings…**, choose **Apple Intelligence & Siri**, and turn it on.
+Return to Phaedrus after macOS has prepared the model; availability refreshes when the app
+becomes active. Once ready, turn on the Smart cleanup switch. Cleanup runs after dictation,
+not when you click Check availability. Unsupported selected languages are listed by name.
+
 After speech recognition finishes, the panel may briefly say **Refining…**. A local language
 model receives short disputed passages, their recognized alternatives and confidence scores,
 and nearby sentence context. It returns option IDs, never replacement prose. Phaedrus then

@@ -11,16 +11,18 @@ enum SmartCleanup {
         let model = SystemLanguageModel.default
         switch model.availability {
         case .available:
-            if localeIDs.contains(where: { !model.supportsLocale(Locale(identifier: $0)) }) {
-                return "Apple Intelligence doesn't support every selected language on this Mac."
+            let unsupported = localeIDs.filter { !model.supportsLocale(Locale(identifier: $0)) }
+            if !unsupported.isEmpty {
+                let names = unsupported.map { Locale.current.localizedString(forIdentifier: $0) ?? $0 }.joined(separator: ", ")
+                return "Apple Intelligence doesn't support these selected languages on this Mac: \(names). Change your language selection above to use Smart cleanup."
             }
             return nil
         case .unavailable(.appleIntelligenceNotEnabled):
-            return "Turn on Apple Intelligence in System Settings to use Smart cleanup."
+            return "Apple Intelligence is turned off. Open System Settings → Apple Intelligence & Siri and turn it on. Return here after its model is ready."
         case .unavailable(.deviceNotEligible):
-            return "This Mac doesn't support Apple Intelligence."
+            return "This Mac doesn't support Apple Intelligence. Dictation and language mixing still work without Smart cleanup."
         case .unavailable(.modelNotReady):
-            return "Apple Intelligence is still getting ready. Try again after its model finishes downloading."
+            return "Apple Intelligence's on-device model isn't ready yet. macOS manages its download. Check Apple Intelligence & Siri in System Settings, then try again."
         case .unavailable:
             return "Apple Intelligence is currently unavailable."
         }

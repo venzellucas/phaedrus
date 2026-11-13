@@ -100,6 +100,7 @@ final class PausedDictationControls: ObservableObject {
 @MainActor
 final class SettingsModel: ObservableObject {
     private let d = Prefs.d
+    private let cleanupAvailabilityCheck: ([String]) -> String?
 
     @Published var supported: [Locale] = []
     @Published var loadingLanguages = true
@@ -115,6 +116,7 @@ final class SettingsModel: ObservableObject {
     @Published var mixLanguages: Bool { didSet { d.set(mixLanguages, forKey: "mixLanguages") } }
     @Published var smartCleanup: Bool { didSet { d.set(smartCleanup, forKey: "smartCleanup") } }
     @Published var cleanupUnavailable: String? = "Checking Apple Intelligence…"
+    @Published var showingCleanupAvailability = false
 
     @Published var micKey = false
     @Published var shortcut = "…"
@@ -122,7 +124,8 @@ final class SettingsModel: ObservableObject {
     @Published var message: String?
     private var refreshID = UUID()
 
-    init() {
+    init(cleanupAvailabilityCheck: @escaping ([String]) -> String? = SmartCleanup.unavailableReason) {
+        self.cleanupAvailabilityCheck = cleanupAvailabilityCheck
         selected = Prefs.locales
         silence = Prefs.silence
         noSpeech = Prefs.noSpeech
@@ -160,7 +163,14 @@ final class SettingsModel: ObservableObject {
     }
 
     func refreshCleanupAvailability() {
-        cleanupUnavailable = SmartCleanup.unavailableReason(localeIDs: selected)
+        cleanupUnavailable = cleanupAvailabilityCheck(selected)
+    }
+
+    /// A manual check must acknowledge the click even when the status is unchanged.
+    /// Automatic refreshes update the inline status without interrupting the user.
+    func checkCleanupAvailability() {
+        refreshCleanupAvailability()
+        showingCleanupAvailability = true
     }
 
     func name(_ l: Locale) -> String { Locale.current.localizedString(forIdentifier: l.identifier) ?? l.identifier }
@@ -301,20 +311,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
 
-            Section("Smart cleanup") {
-                Toggle("Use on-device Smart cleanup (experimental)", isOn: $m.smartCleanup)
-                    .disabled(m.cleanupUnavailable != nil && !m.smartCleanup)
-                Text("Uses Apple Intelligence to choose between recognized words and add missing sentence-ending punctuation. Enable language mixing above to compare languages. Your words stay on this Mac.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("May take up to five seconds. If cleanup is unavailable or fails, Phaedrus uses the existing transcript.")
-                    .font(.caption).foregroundStyle(.secondary)
-                if let reason = m.cleanupUnavailable {
-                    Text(reason).font(.caption).foregroundStyle(.secondary)
-                    Button("Check availability") { m.refreshCleanupAvailability() }
-                } else {
-                    Text("Ready on this Mac").font(.caption).foregroundStyle(.secondary)
-                }
-            }
+            SmartCleanupSettings(m: m)
 
             Section("After dictating") {
                 Toggle("Also copy the text to the clipboard", isOn: $m.copyToClipboard)
@@ -348,6 +345,57 @@ struct SettingsView: View {
                 Text(value.wrappedValue.truncatingRemainder(dividingBy: 1) == 0
                      ? "\(Int(value.wrappedValue)) \(unit)" : String(format: "%.1f \(unit)", value.wrappedValue))
                     .monospacedDigit().frame(width: 52, alignment: .trailing)
+            }
+        }
+    }
+}
+
+/// Kept together so readiness, setup guidance, and manual-check feedback agree.
+struct SmartCleanupSettings: View {
+    @ObservedObject var m: SettingsModel
+
+    private func openSystemSettings() {
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
+    }
+
+    var body: some View {
+        Section("Smart cleanup") {
+            Toggle("Use on-device Smart cleanup (experimental)", isOn: $m.smartCleanup)
+                .disabled(m.cleanupUnavailable != nil && !m.smartCleanup)
+            Text("Uses Apple Intelligence to choose between recognized words and add missing sentence-ending punctuation. Enable language mixing above to compare languages. Your words stay on this Mac.")
+                .font(.caption).foregroundStyle(.secondary)
+            Text("May take up to five seconds. If cleanup is unavailable or fails, Phaedrus uses the existing transcript.")
+                .font(.caption).foregroundStyle(.secondary)
+            if let reason = m.cleanupUnavailable {
+                Label("Setup needed", systemImage: "exclamationmark.circle").font(.callout)
+                Text(reason).font(.caption).foregroundStyle(.secondary)
+            } else {
+                Label(m.smartCleanup ? "Ready · cleanup is enabled" : "Ready · turn on the switch above",
+                      systemImage: "checkmark.circle").font(.callout)
+            }
+            HStack {
+                Button("Check availability") { m.checkCleanupAvailability() }
+                if m.cleanupUnavailable != nil {
+                    Button("Open System Settings…", action: openSystemSettings)
+                        .help("Choose Apple Intelligence & Siri in System Settings.")
+                }
+            }
+            Text("Checking availability only checks readiness. Cleanup runs after you finish a dictation.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .alert(m.cleanupUnavailable == nil ? "Smart cleanup is ready" : "Smart cleanup isn't available",
+               isPresented: $m.showingCleanupAvailability) {
+            if m.cleanupUnavailable != nil {
+                Button("Open System Settings…", action: openSystemSettings)
+            }
+            Button("OK", role: .cancel) { }
+        } message: {
+            if let reason = m.cleanupUnavailable {
+                Text(reason + "\n\nChecking availability does not turn on Apple Intelligence or download its model.")
+            } else {
+                Text(m.smartCleanup
+                    ? "Smart cleanup is enabled and ready. It runs after you finish a dictation."
+                    : "Apple Intelligence supports your selected languages. Turn on Use on-device Smart cleanup to apply it after dictation.")
             }
         }
     }
