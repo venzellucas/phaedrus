@@ -30,6 +30,17 @@ jobs:
       - name: Check transcript alignment
         run: scripts/test.sh
 
+      - name: Render recording panel previews
+        run: scripts/preview-hud.sh
+
+      - name: Upload panel previews
+        uses: actions/upload-artifact@v7
+        with:
+          name: recording-panel-previews
+          path: build/hud-previews/*.png
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Verify bundle
         run: |
           plutil -lint build/Phaedrus.app/Contents/Info.plist

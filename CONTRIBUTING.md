@@ -10,6 +10,7 @@ Use macOS 26 or later with Xcode Command Line Tools and the macOS 26 SDK or late
 ```sh
 scripts/build.sh --no-install  # compile and sign build/Phaedrus.app
 scripts/test.sh                # deterministic transcript alignment fixtures
+scripts/preview-hud.sh         # render native panel states without microphone input
 scripts/build.sh               # rebuild and install to ~/Applications
 open ~/Applications/Phaedrus.app
 ```
