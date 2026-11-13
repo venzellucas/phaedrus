@@ -14,7 +14,8 @@ enum HUDPreview {
         app.finishLaunching()
         let directory = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let hud = HUD()
+        print("System Reduce Motion: \(NSWorkspace.shared.accessibilityDisplayShouldReduceMotion); previewing both modes")
+        let hud = HUD(reduceMotion: false)
         hud.languages(["pt_BR", "en_US", "es_ES"])
         let states: [(String, HUD.Mode, String, Double?)] = [
             ("listening", .listening, "Listening", 0.8),
@@ -49,6 +50,7 @@ enum HUDPreview {
         }
         try liveRibbonPreview(hud: hud, in: directory)
         hud.hide()
+        try reducedMotionPreview(in: directory)
         if let icon = NSImage(contentsOfFile: "docs/icon.png") { app.applicationIconImage = icon }
         try settingsPreviews(in: directory)
     }
@@ -97,6 +99,27 @@ enum HUDPreview {
                 [kCGImagePropertyGIFDelayTime: interval]] as CFDictionary)
         }
         guard CGImageDestinationFinalize(gif) else { throw PhaedrusError("Could not finish the recording animation") }
+    }
+
+    static func reducedMotionPreview(in directory: URL) throws {
+        let hud = HUD(reduceMotion: true)
+        hud.languages(["pt_BR", "en_US"])
+        hud.show(.listening, "Listening")
+        let end = Date().addingTimeInterval(0.5)
+        while Date() < end {
+            hud.updateAudio(.init(level: 0.8, lastBuffer: Date()), elapsed: 42)
+            RunLoop.current.run(until: Date().addingTimeInterval(1.0 / 30))
+        }
+        defer { hud.hide() }
+        guard let view = NSApp.windows.first(where: { $0.isVisible })?.contentView,
+              let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
+            throw PhaedrusError("Could not render the reduced-motion recording panel")
+        }
+        view.cacheDisplay(in: view.bounds, to: bitmap)
+        guard let data = bitmap.representation(using: .png, properties: [:]) else {
+            throw PhaedrusError("Could not encode the reduced-motion recording panel")
+        }
+        try data.write(to: directory.appendingPathComponent("listening-reduced-motion.png"))
     }
 
     /// Render the real settings in both appearances with stable, synthetic states.

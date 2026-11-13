@@ -65,7 +65,9 @@ The CI preview artifact includes these images, a native animated GIF fed with sy
 syllables and silence, and the native session-test captures. The listening ribbon keeps
 90 meter values (about three seconds) and uses the existing microphone measurement;
 it does not retain PCM audio or run another recognition model. Its timer stays at 30 fps.
-The GIF demonstrates visual behavior, not microphone latency or battery usage.
+The GIF demonstrates visual behavior, not microphone latency or battery usage. The preview
+harness explicitly captures both motion modes, because CI Macs can have Reduce Motion
+enabled. Production always follows the user's macOS preference.
 
 ## Manual checks
 

@@ -13,7 +13,9 @@ final class HUD {
     private var animationTimer: Timer?
     var onClick: (() -> Void)?
 
-    init() {
+    // The optional override lets native previews exercise both accessibility
+    // modes even on CI Macs that default to Reduce Motion. The app uses nil.
+    init(reduceMotion: Bool? = nil) {
         let frame = NSRect(x: 0, y: 0, width: 420, height: 124)
         panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
                         backing: .buffered, defer: false)
@@ -27,6 +29,7 @@ final class HUD {
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
         surface = RecordingSurface(frame: frame)
+        surface.reduceMotionOverride = reduceMotion
         panel.contentView = surface
         surface.onClick = { [weak self] in self?.onClick?() }
     }
@@ -104,6 +107,10 @@ private final class RecordingSurface: NSView {
         didSet { if inputAvailable != oldValue { needsDisplay = true } }
     }
     var onClick: (() -> Void)?
+    var reduceMotionOverride: Bool?
+    private var reduceMotion: Bool {
+        reduceMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
     private var ribbon = AudioRibbon()
     private var phase = 0.0
     private var lastTick = CACurrentMediaTime()
@@ -181,7 +188,7 @@ private final class RecordingSurface: NSView {
         let now = CACurrentMediaTime()
         let dt = min(max(now - lastTick, 0), 0.1)
         lastTick = now
-        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduced = reduceMotion
         if mode == .listening && inputAvailable {
             let wasQuiet = ribbon.isQuiet
             ribbon.advance(target: targetLevel, delta: dt)
@@ -227,7 +234,7 @@ private final class RecordingSurface: NSView {
     }
 
     private func drawRibbon() {
-        let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        let reduced = reduceMotion
         let listening = mode == .listening
         let colors = PhaedrusTheme.ribbonColors
         let interrupted = listening && !inputAvailable
