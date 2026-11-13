@@ -165,11 +165,17 @@ enum SessionSettingsTests {
             let model = SettingsModel(cleanupAvailabilityCheck: { _ in nil })
             expect(model.cleanupStyle == expected && Prefs.cleanupStyle == expected, "Read the saved style with a conservative default")
             if value == "natural", CommandLine.arguments.count > 1 {
+                FileHandle.standardOutput.write(Data("Rendering Natural settings preview\n".utf8))
                 model.refreshCleanupAvailability()
                 let view = Form { SmartCleanupSettings(m: model) }.formStyle(.grouped).frame(width: 480, height: 420)
                 let window = NSWindow(contentViewController: NSHostingController(rootView: view))
                 window.isReleasedWhenClosed = false
                 window.makeKeyAndOrderFront(nil)
+                // Allow the hosting view to complete its initial run-loop layout
+                // before asking AppKit for a bitmap of the picker and form.
+                waitUntil("Natural settings must have laid-out content") {
+                    (window.contentView?.bounds.width ?? 0) > 0 && (window.contentView?.bounds.height ?? 0) > 0
+                }
                 let path = URL(fileURLWithPath: CommandLine.arguments[1]).deletingLastPathComponent()
                     .appendingPathComponent("natural-cleanup.png").path
                 savePreview(window, path: path)
@@ -292,14 +298,14 @@ enum SessionSettingsTests {
     }
 
     static func savePreview(_ window: NSWindow, path: String) {
-        guard let view = window.contentView else { preconditionFailure("Settings view missing") }
+        guard let view = window.contentView else { fatalError("Settings view missing") }
         view.layoutSubtreeIfNeeded()
         guard let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-            preconditionFailure("Could not render paused settings")
+            fatalError("Could not render settings: \(view.bounds)")
         }
         view.cacheDisplay(in: view.bounds, to: bitmap)
         guard let data = bitmap.representation(using: .png, properties: [:]) else {
-            preconditionFailure("Could not encode paused settings")
+            fatalError("Could not encode settings")
         }
         let url = URL(fileURLWithPath: path)
         try! FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)

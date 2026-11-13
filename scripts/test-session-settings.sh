@@ -6,5 +6,7 @@ test_dir=$(mktemp -d)
 trap 'rm -rf "$test_dir"' EXIT
 sources=(Sources/*.swift)
 sources=(${sources:#Sources/main.swift})
-xcrun --sdk macosx swiftc -O -swift-version 6 "${sources[@]}" Tests/SessionSettingsTests.swift -o "$test_dir/session-settings-tests"
+# Keep assertion messages and source locations in UI test failures. The app
+# itself is separately compiled with optimization by build.sh.
+xcrun --sdk macosx swiftc -g -swift-version 6 "${sources[@]}" Tests/SessionSettingsTests.swift -o "$test_dir/session-settings-tests"
 "$test_dir/session-settings-tests" "$PWD/build/hud-previews/paused-settings.png"
