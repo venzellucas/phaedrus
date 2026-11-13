@@ -201,22 +201,316 @@ final class SettingsModel: ObservableObject {
 
 // MARK: - View
 
+enum SettingsPage: String, CaseIterable {
+    case languages, cleanup, recording, shortcuts
+    var title: String {
+        switch self {
+        case .languages: "Voice & languages"
+        case .cleanup: "Smart cleanup"
+        case .recording: "Recording"
+        case .shortcuts: "Shortcuts & access"
+        }
+    }
+    var symbol: String {
+        switch self {
+        case .languages: "globe"
+        case .cleanup: "text.badge.checkmark"
+        case .recording: "waveform"
+        case .shortcuts: "keyboard"
+        }
+    }
+    var subtitle: String {
+        switch self {
+        case .languages: "Speak naturally, in the languages you use."
+        case .cleanup: "Choose how your spoken words become written text."
+        case .recording: "A quiet space to speak, with a finish that feels right."
+        case .shortcuts: "Your next thought is one shortcut away."
+        }
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var m: SettingsModel
     @ObservedObject var pausedDictation: PausedDictationControls
+    @State private var page: SettingsPage
+    @State private var languageSearch = ""
+    @Environment(\.colorSchemeContrast) private var contrast
 
-    private var shortcutSection: some View {
-        Section {
-            Toggle("Use the 🎤 key to dictate", isOn: Binding(get: { m.micKey }, set: { m.setMicKey($0) }))
-            LabeledContent("Shortcut", value: m.shortcut)
-            LabeledContent("Settings while dictating", value: "⌘,")
-            Button("Change shortcut in System Settings…") {
-                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")!)
+    init(m: SettingsModel, pausedDictation: PausedDictationControls, initialPage: SettingsPage = .languages) {
+        self.m = m
+        self.pausedDictation = pausedDictation
+        _page = State(initialValue: initialPage)
+    }
+
+    var body: some View {
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            VStack(spacing: 0) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(page.title).font(.system(size: 24, weight: .semibold))
+                            .accessibilityAddTraits(.isHeader)
+                        SettingsNote(page.subtitle)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(PhaedrusTheme.pagePadding)
+                if pausedDictation.isPaused { pausedControls.padding(.horizontal, PhaedrusTheme.pagePadding).padding(.bottom, 16) }
+                ScrollView {
+                    VStack(alignment: .leading, spacing: PhaedrusTheme.space * 2) {
+                        switch page {
+                        case .languages: languageSettings
+                        case .cleanup: SmartCleanupSettings(m: m)
+                        case .recording: recordingSettings
+                        case .shortcuts: shortcutSettings
+                        }
+                    }
+                    .padding(.horizontal, PhaedrusTheme.pagePadding)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .id(page) // Start each page at the top, including when pausing to change languages.
             }
-            if let msg = m.message { Text(msg).font(.caption).foregroundStyle(.red) }
-        } header: { Text("Shortcut") } footer: {
-            Text("The 🎤 key is remapped to F18. In Keyboard Shortcuts → Services, you can assign shortcuts to “Dictate with Phaedrus” and “Phaedrus Settings”. The settings shortcut can also launch the app.")
-                .font(.caption).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .font(.system(size: PhaedrusTheme.bodySize))
+        .tint(PhaedrusTheme.accent)
+        .background(PhaedrusTheme.canvas)
+        .frame(minWidth: 780, idealWidth: 800, minHeight: 620, idealHeight: 680)
+        .onChange(of: pausedDictation.isPaused) { _, paused in
+            if paused { page = .languages; languageSearch = "" }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            m.refreshCleanupAvailability()
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 12) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 48, height: 48)
+                    .accessibilityHidden(true)
+                Text("Phaedrus").font(.system(size: 21, weight: .semibold))
+                Text("A little space for your voice.")
+                    .font(.system(size: 12)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 32)
+            VStack(spacing: 6) {
+                ForEach(SettingsPage.allCases, id: \.self) { item in
+                    Button { page = item } label: {
+                        HStack(spacing: 9) {
+                            Image(systemName: item.symbol).frame(width: 18)
+                            Text(item.title).fontWeight(page == item ? .semibold : .regular)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                        .foregroundStyle(page == item ? PhaedrusTheme.accent : Color.primary)
+                        .background(page == item ? PhaedrusTheme.accent.opacity(0.11) : .clear,
+                                    in: RoundedRectangle(cornerRadius: PhaedrusTheme.controlRadius))
+                        .overlay {
+                            if page == item {
+                                RoundedRectangle(cornerRadius: PhaedrusTheme.controlRadius)
+                                    .strokeBorder(PhaedrusTheme.accent.opacity(contrast == .increased ? 1 : 0.18))
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(page == item ? .isSelected : [])
+                }
+            }
+            Spacer(minLength: 24)
+            VStack(alignment: .leading, spacing: 9) {
+                Label("On this Mac", systemImage: "desktopcomputer")
+                    .font(.system(size: 12, weight: .medium))
+                Text("Your audio stays here.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                Rectangle()
+                    .fill(LinearGradient(colors: PhaedrusTheme.ribbonColors.map { Color(nsColor: $0) },
+                                         startPoint: .leading, endPoint: .trailing))
+                    .frame(height: 2).opacity(0.8).padding(.vertical, 5)
+                    .accessibilityHidden(true)
+                Text("Settings save automatically.")
+                    .font(.system(size: 10)).foregroundStyle(.secondary)
+            }.padding(12)
+        }
+        .padding(12)
+        .frame(width: 208)
+        .background(PhaedrusTheme.sidebar)
+    }
+
+    private var pausedControls: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Dictation paused", systemImage: "pause.circle.fill").fontWeight(.semibold)
+                Spacer()
+                Text("Microphone off").font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            SettingsNote("Your earlier words are kept. Change settings, then pick up where you left off.")
+            if let message = pausedDictation.message {
+                Label(message, systemImage: "exclamationmark.circle").foregroundStyle(.red)
+                    .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+            }
+            HStack(spacing: 8) {
+                Button("Resume dictation") { pausedDictation.action = .resume }
+                    .keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent)
+                Button("Finish and insert") { pausedDictation.action = .finish }
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(!pausedDictation.hasText)
+                Button("Cancel") { pausedDictation.action = .cancel }
+                    .keyboardShortcut(.cancelAction)
+                    .accessibilityLabel("Cancel entire dictation")
+            }
+            Text("↵ Resume    ⌘↵ Finish    esc Cancel · Closing this window resumes.")
+                .font(.system(size: 11)).foregroundStyle(.secondary)
+            if let warning = pausedDictation.deadlineWarning {
+                Label(warning, systemImage: "clock").font(.system(size: 12))
+                    .foregroundStyle(PhaedrusTheme.caution)
+            }
+        }
+        .padding(16)
+        .background(PhaedrusTheme.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: PhaedrusTheme.cardRadius))
+        .overlay {
+            RoundedRectangle(cornerRadius: PhaedrusTheme.cardRadius)
+                .strokeBorder(PhaedrusTheme.accent.opacity(contrast == .increased ? 0.8 : 0.25))
+        }
+    }
+
+    private var filteredLanguages: [Locale] {
+        m.supported.filter { languageSearch.isEmpty || m.name($0).localizedCaseInsensitiveContains(languageSearch)
+            || $0.identifier.localizedCaseInsensitiveContains(languageSearch) }
+            .sorted {
+                if m.isOn($0) != m.isOn($1) { return m.isOn($0) }
+                return m.name($0).localizedStandardCompare(m.name($1)) == .orderedAscending
+            }
+    }
+
+    private var languageSettings: some View {
+        VStack(alignment: .leading, spacing: PhaedrusTheme.space * 2) {
+            SettingsCard(title: "Listening languages", symbol: "globe") {
+                HStack(spacing: 6) {
+                    ForEach(m.selected, id: \.self) { id in
+                        let locale = Locale(identifier: id)
+                        SettingsBadge(text: locale.language.languageCode?.identifier.uppercased() ?? id,
+                                      symbol: "checkmark")
+                            .help(m.name(locale))
+                            .accessibilityLabel(m.name(locale) + ", selected")
+                    }
+                    Spacer()
+                    Text("\(m.selected.count) of \(Prefs.maxLanguages) selected")
+                        .font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                    TextField("Find a language", text: $languageSearch).textFieldStyle(.plain)
+                        .accessibilityLabel("Find a language")
+                    if !languageSearch.isEmpty {
+                        Button { languageSearch = "" } label: { Image(systemName: "xmark.circle.fill") }
+                            .buttonStyle(.plain).foregroundStyle(.secondary)
+                            .accessibilityLabel("Clear language search")
+                    }
+                }
+                .padding(10).background(PhaedrusTheme.inset, in: RoundedRectangle(cornerRadius: 8))
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        if m.loadingLanguages {
+                            Label("Loading languages…", systemImage: "ellipsis").foregroundStyle(.secondary).padding(8)
+                        } else if m.supported.isEmpty {
+                            SettingsNote("On-device languages are unavailable on this Mac.").padding(8)
+                        } else if filteredLanguages.isEmpty {
+                            SettingsNote("No languages match your search.").padding(8)
+                        }
+                        ForEach(filteredLanguages, id: \.identifier) { locale in
+                            Toggle(isOn: Binding(get: { m.isOn(locale) }, set: { m.set(locale, $0) })) {
+                                HStack {
+                                    Text(m.name(locale)).frame(maxWidth: .infinity, alignment: .leading)
+                                    if m.installed.contains(locale.identifier) {
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .foregroundStyle(PhaedrusTheme.success)
+                                            .help("Speech model downloaded")
+                                            .accessibilityLabel("Speech model downloaded")
+                                    }
+                                }
+                            }
+                            .toggleStyle(.checkbox)
+                            .padding(.horizontal, 8).padding(.vertical, 9)
+                            .background(m.isOn(locale) ? PhaedrusTheme.accent.opacity(0.06) : .clear,
+                                        in: RoundedRectangle(cornerRadius: 7))
+                            .disabled(m.isOn(locale) ? m.selected.count == 1 : m.selected.count >= Prefs.maxLanguages)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }.frame(height: pausedDictation.isPaused ? 140 : 190)
+                SettingsNote("Choose up to three. Speech models download from Apple on first use; each extra language adds work while you speak.")
+            }
+            SettingsCard(title: "One thought, more than one language", symbol: "bubble.left.and.bubble.right") {
+                SettingsToggle(title: "Mix languages in one dictation", isOn: $m.mixLanguages)
+                    .disabled(m.selected.count < 2)
+                HStack(alignment: .top, spacing: 10) {
+                    SettingsBadge(text: "Experimental")
+                    SettingsNote(m.selected.count < 2
+                        ? "Select at least two languages to mix words within a sentence."
+                        : "Keeps each word in the language you speak. Results can still be wrong; with mixing off, the best single-language transcript is used.")
+                }
+            }
+        }
+    }
+
+    private var recordingSettings: some View {
+        VStack(spacing: PhaedrusTheme.space * 2) {
+            SettingsCard(title: "When to finish", symbol: "timer") {
+                slider("Stop after silence", value: $m.silence, range: 1...8, step: 0.5, unit: "s")
+                slider("Give up if nothing is heard", value: $m.noSpeech, range: 5...30, step: 1, unit: "s")
+                slider("Longest dictation", value: $m.maxMinutes, range: 1...15, step: 1, unit: "min")
+                Divider()
+                SettingsNote("Finish early with the microphone key, Return, or a click on the recording panel. Esc cancels. While recording, Return and Esc go to Phaedrus.")
+            }
+            SettingsCard(title: "After dictating", symbol: "doc.on.clipboard") {
+                SettingsToggle(title: "Also copy the text to the clipboard", detail: "Paste with ⌘V in apps that don’t accept Services text.", isOn: $m.copyToClipboard)
+                SettingsNote("The copy stays on this Mac, outside Universal Clipboard. Clipboard managers can still record it.")
+                Divider()
+                SettingsToggle(title: "Play start and stop sounds", isOn: $m.playSounds)
+            }
+            Label {
+                SettingsNote("The ribbon follows microphone activity. Live transcripts stay hidden so you can focus on speaking.")
+            } icon: { Image(systemName: "waveform").foregroundStyle(PhaedrusTheme.accent) }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    private var shortcutSettings: some View {
+        VStack(spacing: PhaedrusTheme.space * 2) {
+            SettingsCard(title: "Start with a key", symbol: "keyboard") {
+                SettingsToggle(title: "Use the 🎤 key to dictate", isOn: Binding(get: { m.micKey }, set: { m.setMicKey($0) }))
+                HStack { Text("Dictation shortcut"); Spacer(); KeyCap(text: m.shortcut) }
+                Button("Change shortcut in System Settings…") {
+                    NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Keyboard-Settings.extension")!)
+                }
+                if let msg = m.message {
+                    Label(msg, systemImage: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(.red)
+                }
+                SettingsNote("The microphone key is remapped to F18. In Keyboard Shortcuts → Services, assign shortcuts to “Dictate with Phaedrus” or “Phaedrus Settings”. The settings shortcut can also launch the app.")
+            }
+            SettingsCard(title: "While you speak", symbol: "command") {
+                shortcutRow("Finish and insert", key: "↵")
+                shortcutRow("Cancel dictation", key: "esc")
+                shortcutRow("Pause and open settings", key: "⌘ ,")
+                SettingsNote("While paused, Return or closing Settings resumes. ⌘Return finishes with the words already captured.")
+            }
+            SettingsCard(title: "Microphone access", symbol: "mic") {
+                HStack {
+                    SettingsBadge(text: micStatus, symbol: m.micAuth == .authorized ? "checkmark.circle" : "exclamationmark.circle",
+                                  color: m.micAuth == .authorized ? PhaedrusTheme.success : PhaedrusTheme.caution)
+                    Spacer()
+                    if m.micAuth == .notDetermined {
+                        Button("Allow microphone…") { m.requestMic() }
+                    } else if m.micAuth != .authorized {
+                        Button("Open Privacy Settings…") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -228,126 +522,21 @@ struct SettingsView: View {
         }
     }
 
-    var body: some View {
-        Form {
-            if pausedDictation.isPaused {
-                Section {
-                    Label("Dictation paused", systemImage: "pause.circle.fill").font(.headline)
-                    Text("The microphone is off. Change your languages, then resume. Your earlier words will be kept.")
-                        .font(.callout).foregroundStyle(.secondary)
-                    if let message = pausedDictation.message {
-                        Text(message).font(.caption).foregroundStyle(.red)
-                    }
-                    HStack {
-                        Button("Resume dictation") { pausedDictation.action = .resume }
-                            .keyboardShortcut(.defaultAction)
-                        Button("Finish and insert") { pausedDictation.action = .finish }
-                            .keyboardShortcut(.return, modifiers: .command)
-                            .disabled(!pausedDictation.hasText)
-                        Button("Cancel dictation") { pausedDictation.action = .cancel }
-                            .keyboardShortcut(.cancelAction)
-                    }
-                    Text("Return or close this window to resume. Esc cancels the entire dictation.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    if let warning = pausedDictation.deadlineWarning {
-                        Text(warning).font(.caption).foregroundStyle(.orange)
-                    }
-                }
-            }
-            if !pausedDictation.isPaused {
-                Section {
-                    HStack(spacing: 14) {
-                        Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Phaedrus").font(.title2.bold())
-                            Text("Press the shortcut, speak, and the text appears at your cursor. Transcription runs on this Mac.")
-                                .font(.callout).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-
-            if !pausedDictation.isPaused { shortcutSection }
-
-            Section {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 6) {
-                        if m.loadingLanguages {
-                            Text("Loading languages…").foregroundStyle(.secondary)
-                        } else if m.supported.isEmpty {
-                            Text("On-device languages are unavailable on this Mac.").foregroundStyle(.secondary)
-                        }
-                        ForEach(m.supported, id: \.identifier) { l in
-                            Toggle(isOn: Binding(get: { m.isOn(l) }, set: { m.set(l, $0) })) {
-                                HStack {
-                                    Text(m.name(l))
-                                    if m.installed.contains(l.identifier) {
-                                        Text("downloaded").font(.caption).foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .disabled(m.isOn(l) ? m.selected.count == 1 : m.selected.count >= Prefs.maxLanguages)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .frame(height: 170)
-                Toggle("Mix languages in one dictation (experimental)", isOn: $m.mixLanguages)
-                    .disabled(m.selected.count < 2)
-                Text("Keeps words in the language you speak, including switches within a sentence. Select at least two languages. Results can still be wrong; turn this off to use the best single-language transcript.")
-                    .font(.caption).foregroundStyle(.secondary)
-            } header: { Text("Languages") } footer: {
-                Text("Phaedrus listens in every selected language at once (up to \(Prefs.maxLanguages)). Mixing is optional and runs entirely on this Mac. Each language's model is downloaded from Apple the first time it's used. Every extra language adds work while you speak.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            if pausedDictation.isPaused { shortcutSection }
-
-            Section("Stopping") {
-                slider("Stop after silence", value: $m.silence, range: 1...8, step: 0.5, unit: "s")
-                slider("Give up if nothing is heard", value: $m.noSpeech, range: 5...30, step: 1, unit: "s")
-                slider("Longest dictation", value: $m.maxMinutes, range: 1...15, step: 1, unit: "min")
-                Text("Stop early with 🎤, Return, or a click on the bubble; Esc cancels. While the bubble is shown, Return and Esc go to Phaedrus, not to other apps.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Text("The recording ribbon reacts to microphone input. Live transcripts stay hidden so you can focus on speaking.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            SmartCleanupSettings(m: m)
-
-            Section("After dictating") {
-                Toggle("Also copy the text to the clipboard", isOn: $m.copyToClipboard)
-                Text("Useful in apps that don't accept Services text: just press ⌘V. The copy stays on this Mac (not shared via Universal Clipboard), but clipboard managers can record it.")
-                    .font(.caption).foregroundStyle(.secondary)
-                Toggle("Play start and stop sounds", isOn: $m.playSounds)
-            }
-
-            Section("Permissions") {
-                LabeledContent("Microphone", value: micStatus)
-                if m.micAuth == .notDetermined {
-                    Button("Allow microphone…") { m.requestMic() }
-                } else if m.micAuth != .authorized {
-                    Button("Open Privacy Settings…") {
-                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone")!)
-                    }
-                }
-            }
-        }
-        .formStyle(.grouped)
-        .frame(width: 480, height: 700)
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
-            m.refreshCleanupAvailability()
-        }
+    private func shortcutRow(_ title: String, key: String) -> some View {
+        HStack { Text(title); Spacer(); KeyCap(text: key) }
     }
 
     private func slider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, step: Double, unit: String) -> some View {
-        LabeledContent(title) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Slider(value: value, in: range, step: step).frame(width: 160)
+                Text(title)
+                Spacer()
                 Text(value.wrappedValue.truncatingRemainder(dividingBy: 1) == 0
                      ? "\(Int(value.wrappedValue)) \(unit)" : String(format: "%.1f \(unit)", value.wrappedValue))
-                    .monospacedDigit().frame(width: 52, alignment: .trailing)
+                    .monospacedDigit().foregroundStyle(.secondary)
             }
+            Slider(value: value, in: range, step: step).accessibilityLabel(title)
+                .accessibilityValue("\(value.wrappedValue) \(unit)")
         }
     }
 }
@@ -355,41 +544,80 @@ struct SettingsView: View {
 /// Kept together so readiness, setup guidance, and manual-check feedback agree.
 struct SmartCleanupSettings: View {
     @ObservedObject var m: SettingsModel
+    @Environment(\.colorSchemeContrast) private var contrast
 
     private func openSystemSettings() {
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/System Settings.app"))
     }
 
+    private func summary(_ style: CleanupStyle) -> String {
+        switch style {
+        case .conservative: "Recognized alternatives and final punctuation."
+        case .natural: "Fewer repetitions, fillers, and abandoned starts."
+        case .written: "Natural cleanup, plus grammar and word corrections."
+        }
+    }
+
     var body: some View {
-        Section("Smart cleanup") {
-            Toggle("Use on-device Smart cleanup (experimental)", isOn: $m.smartCleanup)
-                .disabled(m.cleanupUnavailable != nil && !m.smartCleanup)
-            Picker("Review style", selection: $m.cleanupStyle) {
-                ForEach(CleanupStyle.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            .disabled(!m.smartCleanup)
-            Text("Uses Apple Intelligence to review dictation on this Mac. Enable language mixing above to compare recognized alternatives across languages.")
-                .font(.caption).foregroundStyle(.secondary)
-            Text(m.cleanupStyle.explanation)
-                .font(.caption).foregroundStyle(.secondary)
-            Text("May take up to \(Int(m.cleanupStyle.timeoutSeconds)) seconds. If a passage cannot be reviewed, its existing text is kept.")
-                .font(.caption).foregroundStyle(.secondary)
-            if let reason = m.cleanupUnavailable {
-                Label("Setup needed", systemImage: "exclamationmark.circle").font(.callout)
-                Text(reason).font(.caption).foregroundStyle(.secondary)
-            } else {
-                Label(m.smartCleanup ? "Ready · cleanup is enabled" : "Ready · turn on the switch above",
-                      systemImage: "checkmark.circle").font(.callout)
-            }
-            HStack {
-                Button("Check availability") { m.checkCleanupAvailability() }
-                if m.cleanupUnavailable != nil {
+        VStack(alignment: .leading, spacing: PhaedrusTheme.space * 2) {
+            SettingsCard(title: "On-device review", symbol: "sparkles") {
+                SettingsToggle(title: "Use on-device Smart cleanup", detail: "Apple Intelligence reviews your text after dictation.", isOn: $m.smartCleanup)
+                    .disabled(m.cleanupUnavailable != nil && !m.smartCleanup)
+                HStack {
+                    SettingsBadge(text: m.cleanupUnavailable != nil ? "Setup needed" : (m.smartCleanup ? "Ready · cleanup enabled" : "Ready · cleanup off"),
+                                  symbol: m.cleanupUnavailable != nil ? "exclamationmark.circle" : "checkmark.circle",
+                                  color: m.cleanupUnavailable != nil ? PhaedrusTheme.caution : PhaedrusTheme.success)
+                    Spacer()
+                    Button("Check availability") { m.checkCleanupAvailability() }
+                        .help("Checks readiness only. Cleanup runs after you finish speaking.")
+                }
+                if let reason = m.cleanupUnavailable {
+                    SettingsNote(reason)
                     Button("Open System Settings…", action: openSystemSettings)
                         .help("Choose Apple Intelligence & Siri in System Settings.")
                 }
             }
-            Text("Checking availability only checks readiness. Cleanup runs after you finish a dictation.")
-                .font(.caption).foregroundStyle(.secondary)
+            SettingsCard(title: "Review style", symbol: "text.badge.checkmark") {
+                VStack(spacing: 8) {
+                    ForEach(CleanupStyle.allCases, id: \.self) { style in
+                        Button { m.cleanupStyle = style } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: m.cleanupStyle == style ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 18))
+                                    .foregroundStyle(m.cleanupStyle == style ? PhaedrusTheme.accent : Color.secondary)
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(style.title).fontWeight(.semibold).foregroundStyle(.primary)
+                                    Text(summary(style)).font(.system(size: 12)).foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(12).frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .background(m.cleanupStyle == style ? PhaedrusTheme.accent.opacity(0.07) : PhaedrusTheme.inset,
+                                        in: RoundedRectangle(cornerRadius: PhaedrusTheme.controlRadius))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: PhaedrusTheme.controlRadius)
+                                    .strokeBorder(m.cleanupStyle == style ? PhaedrusTheme.accent.opacity(0.7)
+                                                  : Color.primary.opacity(contrast == .increased ? 0.4 : 0.06))
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(style.title + ". " + summary(style))
+                        .accessibilityAddTraits(m.cleanupStyle == style ? .isSelected : [])
+                        .disabled(!m.smartCleanup)
+                        .opacity(m.smartCleanup ? 1 : 0.55)
+                    }
+                }
+                DisclosureGroup("What \(m.cleanupStyle.title) changes") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        SettingsBadge(text: "Experimental")
+                        SettingsNote(m.cleanupStyle.explanation)
+                        SettingsNote("Enable language mixing to compare recognized alternatives across languages.")
+                    }.padding(.top, 8)
+                }
+                SettingsNote("Up to \(Int(m.cleanupStyle.timeoutSeconds)) seconds. Text that cannot be reviewed is kept.")
+            }
         }
         .alert(m.cleanupUnavailable == nil ? "Smart cleanup is ready" : "Smart cleanup isn't available",
                isPresented: $m.showingCleanupAvailability) {
@@ -422,7 +650,10 @@ final class SettingsWindow: NSObject, NSWindowDelegate {
         model = SettingsModel()
         window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(m: model, pausedDictation: pausedDictation)))
         window.title = "Phaedrus Settings"
-        window.styleMask = [.titled, .closable, .miniaturizable]
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.titlebarAppearsTransparent = true
+        window.setContentSize(NSSize(width: 800, height: 680))
+        window.contentMinSize = NSSize(width: 780, height: 620)
         super.init()
         window.delegate = self
         window.isReleasedWhenClosed = false

@@ -112,19 +112,19 @@ private final class RecordingSurface: NSView {
         super.init(frame: frame)
         appearance = NSAppearance(named: .darkAqua)
         title.frame = NSRect(x: 34, y: 74, width: 302, height: 24)
-        title.font = .systemFont(ofSize: 14, weight: .medium)
+        title.font = .systemFont(ofSize: PhaedrusTheme.panelTitleSize, weight: .medium)
         title.textColor = .white
         title.lineBreakMode = .byTruncatingTail
         clock.frame = NSRect(x: 338, y: 76, width: 48, height: 20)
         clock.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        clock.textColor = NSColor(white: 0.78, alpha: 1)
+        clock.textColor = PhaedrusTheme.panelSecondary
         clock.alignment = .right
         detail.frame = NSRect(x: 34, y: 26, width: 130, height: 17)
         hint.frame = NSRect(x: 164, y: 26, width: 222, height: 17)
         hint.alignment = .right
         for label in [detail, hint] {
-            label.font = .systemFont(ofSize: 11, weight: .medium)
-            label.textColor = NSColor(white: 0.78, alpha: 1)
+            label.font = .systemFont(ofSize: PhaedrusTheme.captionSize, weight: .medium)
+            label.textColor = PhaedrusTheme.panelSecondary
         }
         for label in [title, clock, detail, hint] { addSubview(label) }
         // Timer changes are visual only; don't announce elapsed time every frame.
@@ -182,7 +182,7 @@ private final class RecordingSurface: NSView {
     }
 
     private var silhouette: NSBezierPath {
-        NSBezierPath(roundedRect: bounds.insetBy(dx: 12, dy: 12), xRadius: 30, yRadius: 30)
+        NSBezierPath(roundedRect: bounds.insetBy(dx: 12, dy: 12), xRadius: PhaedrusTheme.panelRadius, yRadius: PhaedrusTheme.panelRadius)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -194,7 +194,7 @@ private final class RecordingSurface: NSView {
         shadow.shadowBlurRadius = 10
         shadow.shadowOffset = NSSize(width: 0, height: -3)
         shadow.set()
-        NSColor(white: 0.09, alpha: 1).setFill()
+        PhaedrusTheme.panelBase.setFill()
         shape.fill()
         NSGraphicsContext.restoreGraphicsState()
 
@@ -202,7 +202,7 @@ private final class RecordingSurface: NSView {
         shape.addClip()
         let solid = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         if !solid {
-            NSGradient(starting: NSColor(white: 0.17, alpha: 1), ending: NSColor(white: 0.075, alpha: 1))?
+            NSGradient(starting: PhaedrusTheme.panelTop, ending: PhaedrusTheme.panelBottom)?
                 .draw(in: bounds, angle: -90)
         }
         if mode != .error { drawRibbon() }
@@ -217,12 +217,7 @@ private final class RecordingSurface: NSView {
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         let energy = mode == .listening ? level : (mode == .paused ? 0 : 0.18)
         let amplitude = reduced ? 3.0 : 2.5 + energy * 8.5
-        let colors: [NSColor] = [
-            NSColor(srgbRed: 1, green: 0.47, blue: 0.43, alpha: 1),
-            NSColor(srgbRed: 0.8, green: 0.47, blue: 1, alpha: 1),
-            NSColor(srgbRed: 0.34, green: 0.67, blue: 1, alpha: 1),
-            NSColor(srgbRed: 0.40, green: 0.90, blue: 0.77, alpha: 1)
-        ]
+        let colors = PhaedrusTheme.ribbonColors
         for ribbon in 0..<3 {
             let path = NSBezierPath()
             let offset = Double(ribbon) * 1.4

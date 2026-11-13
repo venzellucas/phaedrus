@@ -12,7 +12,7 @@ scripts/build.sh --no-install  # compile and sign build/Phaedrus.app
 scripts/test.sh                # deterministic transcript alignment fixtures
 scripts/test-native-cleanup.sh # Foundation Models smoke check, synthetic text only
 scripts/test-session-settings.sh # native pause/resume/settings checks, fake recognizers
-scripts/preview-hud.sh         # render native panel states without microphone input
+scripts/preview-hud.sh         # render native panel/settings states without microphone input
 scripts/build.sh               # rebuild and install to ~/Applications
 open ~/Applications/Phaedrus.app
 ```
@@ -40,10 +40,36 @@ passing them does not establish recognition accuracy or model quality on real bi
 The native cleanup smoke check verifies the unavailable-model fallback on CI machines without
 Apple Intelligence, or bounds the output if the local model is available.
 
+## Visual system
+
+`Sources/DesignSystem.swift` owns the shared colors, spacing, typography, radii, and native
+settings components. Warm neutral surfaces follow system appearance; terracotta marks
+selection, and the recording ribbon shares its coral/violet/blue/mint palette with Settings.
+The recording panel stays dark for legibility over other apps. Preserve semantic status
+labels, keyboard focus, increased-contrast borders, and the existing motion/transparency
+accessibility behavior when adding components.
+
+`scripts/preview-hud.sh` captures all four settings pages in light/dark appearance, setup
+needed, a compact paused window, increased contrast, and every recording state. These are
+real native views with synthetic data, not screenshots of a web mockup. Inspect them with:
+
+```sh
+open build/hud-previews/settings-languages-light.png
+open build/hud-previews/settings-cleanup-dark.png
+open build/hud-previews/listening.png
+```
+
+The CI preview artifact includes these images plus the native session-test captures.
+
 ## Manual checks
 
 For changes to dictation or settings, check these on a Mac and describe the results in your PR:
 
+- Visit all four settings pages in light/dark appearance and at the minimum window size.
+  Search languages, clear the search, and verify selected languages appear first. Tab through
+  controls with Full Keyboard Access; check VoiceOver labels and Increase Contrast. While
+  paused, navigate pages and scroll: Resume, Finish, and Cancel must stay visible and retain
+  their keyboard shortcuts. Return/close must resume in the original target app.
 - On a fresh preferences domain, only English (US) is selected. Use a separate macOS user
   account for this check if you want to preserve your own settings.
 - A saved language selection survives a rebuild and relaunch. Selecting one to three

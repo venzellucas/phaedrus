@@ -39,7 +39,7 @@ scripts/build.sh                  # builds and installs ~/Applications/Phaedrus.
 open ~/Applications/Phaedrus.app  # opens the settings
 ```
 
-In the settings window, turn on **Use the 🎤 key to dictate**. This makes the 🎤 key (F5 on
+In **Shortcuts & access**, turn on **Use the 🎤 key to dictate**. This makes the 🎤 key (F5 on
 Mac laptops) send F18, binds F18 to Phaedrus, and keeps the remap after restarts. Other
 key remaps you have made with `hidutil` are kept.
 
@@ -93,7 +93,10 @@ A few apps don't accept text from Services (some Electron-based apps, for exampl
 
 ## Settings
 
-Open **Phaedrus** from Spotlight or Finder:
+Open **Phaedrus** from Spotlight or Finder. Settings are organized into **Voice & languages**,
+**Smart cleanup**, **Recording**, and **Shortcuts & access**. Search the language list or
+compare the three review styles in their own page. The window follows the Mac’s light or
+dark appearance and can be resized; paused recording controls remain visible on every page.
 
 You can also use **⌘,** while Phaedrus is focused. To open Settings from other apps, even
 when Phaedrus is not running, assign a shortcut to **Phaedrus Settings** in

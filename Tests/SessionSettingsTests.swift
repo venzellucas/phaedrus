@@ -90,6 +90,7 @@ enum SessionSettingsTests {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.finishLaunching()
+        if let icon = NSImage(contentsOfFile: "docs/icon.png") { app.applicationIconImage = icon }
         // A real Service can be called from a main-queue block. Dispatching the
         // entire test here catches settings tasks that depend on that blocked queue.
         DispatchQueue.main.async {
@@ -122,7 +123,9 @@ enum SessionSettingsTests {
         })
         model.refreshCleanupAvailability()
         expect(!model.showingCleanupAvailability, "Automatic refresh must not open a dialog")
-        let view = Form { SmartCleanupSettings(m: model) }.formStyle(.grouped).frame(width: 480, height: 380)
+        let view = ScrollView { SmartCleanupSettings(m: model).padding(24) }
+            .tint(PhaedrusTheme.accent).background(PhaedrusTheme.canvas)
+            .frame(width: 592, height: 680)
         let window = NSWindow(contentViewController: NSHostingController(rootView: view))
         window.isReleasedWhenClosed = false
         window.makeKeyAndOrderFront(nil)
@@ -167,7 +170,8 @@ enum SessionSettingsTests {
             if expected != .conservative, CommandLine.arguments.count > 1 {
                 FileHandle.standardOutput.write(Data("Rendering \(expected.title) settings preview\n".utf8))
                 model.refreshCleanupAvailability()
-                let view = Form { SmartCleanupSettings(m: model) }.formStyle(.grouped).frame(width: 480, height: 440)
+                let view = SettingsView(m: model, pausedDictation: PausedDictationControls(), initialPage: .cleanup)
+                    .frame(width: 800, height: 680)
                 let window = NSWindow(contentViewController: NSHostingController(rootView: view))
                 window.isReleasedWhenClosed = false
                 window.makeKeyAndOrderFront(nil)
