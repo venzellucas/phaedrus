@@ -132,12 +132,13 @@ private final class RecordingSurface: NSView {
         setAccessibilityElement(true)
         setAccessibilityRole(.button)
         setAccessibilityHelp("Press Return or click to finish dictation. Press Escape to cancel.")
+        addGestureRecognizer(NSClickGestureRecognizer(target: self, action: #selector(clicked(_:))))
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
+    @objc private func clicked(_ recognizer: NSClickGestureRecognizer) {
+        let point = recognizer.location(in: self)
         if silhouette.contains(point) { onClick?() }
     }
 
