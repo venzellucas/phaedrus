@@ -19,13 +19,13 @@ Socrates never wrote anything down; he talked. Phaedrus lets you talk and still 
 - **On-device.** Uses Apple's `SpeechAnalyzer` / `SpeechTranscriber` (macOS 26). No cloud service, no API key, no subscription. Your audio never leaves the Mac.
 - **Optional language detection.** Starts with English (US). Select up to three languages in settings to listen in all of them and keep the transcript that fits best.
 - **Experimental language mixing.** Optionally combine words from the selected languages in one dictation, without translating them. This runs on-device and is off by default.
-- **Optional Smart cleanup.** Apple Intelligence chooses recognized alternatives using sentence context. Natural removes spoken repetitions and fillers; Written also corrects grammar, spelling, and likely recognition mistakes. Runs on-device, with a time limit and automatic fallback. Off by default.
-- **Quiet recording UI.** A smooth colored ribbon shows the last three seconds of microphone intensity, with elapsed time and all selected language codes. No distracting live transcript.
+- **Optional Smart cleanup.** Apple Intelligence chooses recognized alternatives using sentence context. Natural removes spoken repetitions and fillers; Written also corrects grammar, spelling, and likely recognition mistakes; Contextual compares what every language's recognizer heard to fix misheard words. Runs on-device, with a time limit and automatic fallback. Off by default.
+- **Quiet recording UI.** Thin level bars show the last three seconds of microphone intensity, with elapsed time and all selected language codes. No distracting live transcript.
 - **Change languages while dictating.** Press ⌘, to pause and open Settings. Resume with new languages while keeping your earlier words.
 - **No Accessibility permission, no admin rights.** Text is inserted through a macOS *Service*, so it also works on managed Macs where you can't grant Accessibility.
 - **Stays out of the way.** No Dock icon and no menu-bar item. It starts when you press the key and quits after 15 idle minutes.
 
-<p align="center"><img src="docs/media/listening.png" width="420" alt="Native recording panel with a microphone-driven ribbon, timer, and all selected languages"></p>
+<p align="center"><img src="docs/media/listening.png" width="420" alt="Native recording panel with microphone-driven level bars, timer, and all selected languages"></p>
 
 ## Requirements
 
@@ -78,7 +78,7 @@ These require GitHub sign-in and expire after 30 days; published releases do not
 
 1. Click into a text field.
 2. Press **🎤**. A rounded recording panel appears and you hear a *tink*.
-3. Speak. The colored ribbon follows your microphone level from right to left, with a short trail of recent speech and pauses; a timer confirms the session is running. Text stays hidden until you finish. If audio buffers stop arriving, the panel says **Microphone interrupted**.
+3. Speak. The level bars follow your microphone from right to left, one bar per reading, with a short trail of recent speech and pauses (silence rests as a row of dots); a timer confirms the session is running. Text stays hidden until you finish. If audio buffers stop arriving, the panel says **Microphone interrupted**.
 4. To stop, press **🎤** again, press **Return**, click the bubble, or stay quiet for 3 seconds.
    **Esc** cancels, also while the bubble still says "Starting…".
 
@@ -119,7 +119,7 @@ the dictation shortcut; no global shortcut is assigned automatically.
 | Languages (up to 3) | English (US) |
 | Mix languages in one dictation (experimental) | off |
 | Use on-device Smart cleanup (experimental) | off |
-| Review style | Conservative (Natural and Written are optional) |
+| Review style | Conservative (Natural, Written, and Contextual are optional) |
 | Stop after silence | 3 s |
 | Give up if nothing is heard | 10 s |
 | Longest dictation | 5 min (up to 15) |
@@ -153,6 +153,7 @@ Apple Intelligence and all selected languages are available on this Mac. Enable 
 mixing too if you want the model to choose between Portuguese/English alternatives. Choose
 **Review style → Natural** to also clean up spoken repetitions, fillers, and abandoned starts.
 Choose **Written** for light grammar, spelling, and contextual recognition corrections.
+Choose **Contextual** to also let the model compare every language's recognition.
 The saved style defaults to **Conservative**, preserving the previous behavior.
 
 **Check availability** shows a result dialog even when the status hasn't changed. It checks
@@ -217,7 +218,37 @@ guess the wrong word, and a valid edit can still change a nuance. Written is opt
 experimental: review the output. It works from the recognized text, not the audio, and does
 not promise the same quality as another app's transcription or language model.
 
-All three styles run entirely on the Mac; no server, API key, or separately managed model is needed.
+**Contextual** gives the model every selected language's transcript of the same audio, with
+each recognizer's confidence and its uncertain words. A Portuguese recognizer may hear an
+English “deploy” as “de ploy”; the English recognizer heard it right. Using fields generated in
+order, the model first names the topic, then lists misheard draft words and what was meant, and
+only then writes the message. Phaedrus aligns that answer with the draft word by word and
+rebuilds it in one pass, keeping the model's punctuation:
+
+- A word the recognizer was unsure of may be replaced or dropped.
+- A word recognized with high confidence may change only to an equivalent spelling (tô →
+  estou, cant → can't) or through a listed fix that another recognizer heard at the same
+  moment in the audio, or that sounds alike and doesn't touch a name, number, or pronoun.
+  Agreement fixes (eles vai → vão) must be listed too.
+- A confident word may be dropped only as a hesitation sound, a filler set off by
+  punctuation (“, tipo,”), or a repeat whose other copy stays.
+- An added word must be a grammar word or part of an accepted fix.
+- Anything else is put back from the draft, and so are accents the model dropped.
+
+The result must keep the draft's negations, numbers, technical identifiers, speaker, and
+questions. An answer that needs too many repairs (such as a translation) is rejected; then a
+second request names the draft's language. If nothing is accepted or nothing changes,
+Written runs and its result goes through the same word-by-word review (Written's own
+validation alone for dictations over 1,500 words). If a timed-out request is still holding
+the model, the transcript is kept. Contextual has a **thirty-second total budget**; each
+request typically takes two to four seconds. When several transcripts don't fit the model's
+4,096-token context window, only the draft's recognizer is sent.
+
+With `PHAEDRUS_DEBUG=1`, the debug log shows how many draft words fall in each confidence
+band, each request's outcome, and how many fixes were accepted and words put back. It never
+includes text.
+
+All four styles run entirely on the Mac; no server, API key, or separately managed model is needed.
 
 This is experimental. A contextually plausible choice can still be wrong, and the model cannot
 hear the original audio. Compare enabled/disabled results on your own recordings before relying
@@ -245,7 +276,8 @@ continues to work without Apple Intelligence.
 | `Sources/CleanupDeadline.swift` | Cancellation and a deadline that also returns promptly when inference ignores cancellation. |
 | `Sources/FluencyCleanup.swift` | Natural review style, bounded text chunks, deletion/punctuation validation, and preservation of unprocessed text. |
 | `Sources/WrittenCleanup.swift` | Written review instructions and structural checks for local grammar/spelling edits, speaker markers, protected details, and idea order. |
-| `Sources/HUD.swift` | Rounded recording panel, microphone-driven ribbon, elapsed time, and listening/finishing/error states. Respects Reduce Motion and Increase Contrast. |
+| `Sources/ContextCleanup.swift` | Contextual review: every recognizer's transcript and confidence in the prompt, a runtime generation schema (topic → fixes → text), and the word-by-word confidence review of the answer. Builds without the Foundation Models macros. |
+| `Sources/HUD.swift` | Rounded recording panel, microphone-driven level bars, elapsed time, and listening/finishing/error states. Respects Reduce Motion and Increase Contrast. |
 | `Sources/App.swift` | Dictation/Settings Services, temporary global keys, pause/resume, and the session loop. Carbon hotkeys are released while editing Settings, and a fresh recognizer uses the new selection on resume. |
 | `Sources/SettingsView.swift` | The SwiftUI settings window. |
 | `scripts/mic-key.sh` | `on`/`off`: remaps the 🎤 key (HID usage `0xC000000CF`) to F18 with `hidutil` and installs a LaunchAgent that re-applies it at login. Bundled in the app and used by the settings toggle. |

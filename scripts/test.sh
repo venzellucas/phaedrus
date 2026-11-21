@@ -12,3 +12,5 @@ swiftc -O -swift-version 6 Sources/CleanupDeadline.swift Sources/FluencyCleanup.
 "$test_dir/fluency-tests"
 swiftc -O -swift-version 6 Sources/CleanupDeadline.swift Sources/FluencyCleanup.swift Sources/WrittenCleanup.swift Tests/WrittenCleanupTests.swift -o "$test_dir/written-tests"
 "$test_dir/written-tests"
+xcrun --sdk macosx swiftc -O -swift-version 6 Sources/TranscriptMerger.swift Sources/CleanupDeadline.swift Sources/FluencyCleanup.swift Sources/WrittenCleanup.swift Sources/ContextCleanup.swift Tests/ContextCleanupTests.swift -o "$test_dir/context-tests"
+"$test_dir/context-tests"

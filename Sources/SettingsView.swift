@@ -555,6 +555,7 @@ struct SmartCleanupSettings: View {
         case .conservative: "Recognized alternatives and final punctuation."
         case .natural: "Fewer repetitions, fillers, and abandoned starts."
         case .written: "Natural cleanup, plus grammar and word corrections."
+        case .contextual: "Compares every language's recognition and fixes misheard words. Slower."
         }
     }
 

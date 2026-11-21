@@ -3,6 +3,8 @@ import FoundationModels
 
 enum SmartCleanup {
     static let timeoutSeconds = 5.0
+    /// Seconds of the Contextual budget kept for the Written fallback.
+    static let writtenReserve = 12.0
     private static let inference = InferenceGate()
 
     /// A read-only availability check; never downloads a model or enables Apple
@@ -55,7 +57,44 @@ enum SmartCleanup {
 
     /// Text review keeps contextual language choices, then applies the selected
     /// editing style. Both stages share one time budget.
-    static func process(text: String, localeIDs: [String], plan: CleanupPlan?, style: CleanupStyle) async -> String {
+    static func process(text: String, localeIDs: [String], plan: CleanupPlan?, style: CleanupStyle,
+                        evidence: CleanupEvidence = .none) async -> String {
+        let clock = ContinuousClock()
+        let started = clock.now
+        if style == .contextual {
+            let recognitions = evidence.recognitions.isEmpty
+                ? [TranscriptMerger.Transcript(localeID: localeIDs.first ?? "", text: text, words: [])] : evidence.recognitions
+            let languages = Array(Set(localeIDs + recognitions.map(\.localeID))).sorted()
+            if let text = await ContextCleanup.process(draft: text, draftWords: evidence.draftWords,
+                    recognitions: recognitions, localeIDs: languages,
+                    seconds: style.timeoutSeconds - writtenReserve, generating: { prompt, language in
+                guard inference.enter() else { return nil }
+                defer { inference.leave() }
+                guard unavailableReason(localeIDs: languages) == nil else { return nil }
+                return try await ContextCleanup.generate(prompt: prompt, draftLanguage: language)
+            }) {
+                return text
+            }
+            // Written gets the rest of the budget, under the same confidence review.
+            // (If a timed-out request is still holding the model, Written can't run
+            // and the transcript is kept.)
+            let elapsed = started.duration(to: clock.now)
+            let used = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+            let written = await review(text: text, localeIDs: localeIDs, plan: plan, style: .written,
+                                       budget: style.timeoutSeconds - used)
+            guard !Task.isCancelled, written != text else { return written }
+            let report = ContextCleanup.review(written, draft: text, draftWords: evidence.draftWords,
+                                               recognitions: recognitions, fixes: [], localeIDs: languages)
+            ContextCleanup.log?("contextual: Written fallback \(report.outcome), \(report.reverted) words put back")
+            // Too long to align word by word: Written's own validation stands.
+            if report.outcome == "too-long" { return written }
+            return report.text ?? text
+        }
+        return await review(text: text, localeIDs: localeIDs, plan: plan, style: style, budget: style.timeoutSeconds)
+    }
+
+    private static func review(text: String, localeIDs: [String], plan: CleanupPlan?, style: CleanupStyle,
+                                budget: Double) async -> String {
         let clock = ContinuousClock()
         let started = clock.now
         // Written already handles punctuation, so don't spend a model request
@@ -63,7 +102,7 @@ enum SmartCleanup {
         let baseline = if let plan, style != .written || !plan.passages.isEmpty { await refine(plan).text } else { text }
         guard style != .conservative, !Task.isCancelled else { return baseline }
         let elapsed = started.duration(to: clock.now)
-        let seconds = style.timeoutSeconds - Double(elapsed.components.seconds) - Double(elapsed.components.attoseconds) / 1e18
+        let seconds = budget - Double(elapsed.components.seconds) - Double(elapsed.components.attoseconds) / 1e18
         let validation: @Sendable (String, String, [String]) -> String? = style == .written
             ? WrittenCleanup.validated : FluencyCleanup.validated
         return await FluencyCleanup.refine(baseline, localeIDs: localeIDs, seconds: seconds, validation: validation) { prompt in

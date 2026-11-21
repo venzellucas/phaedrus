@@ -33,22 +33,12 @@ struct AudioRibbon {
         }
     }
 
-    /// Oldest at the left, newest at the right. Cubic interpolation makes a
-    /// continuous ribbon from the existing meter instead of sharp meter bars.
-    func amplitude(at position: Double) -> Double {
-        guard position.isFinite else { return 0 }
-        let x = min(1, max(0, position)) * Double(Self.sampleCount - 2)
-            + remainder / Self.sampleInterval
-        let index = Int(x)
-        let t = x - Double(index)
-        func sample(_ i: Int) -> Double {
-            samples[(next + min(Self.sampleCount - 1, max(0, i))) % Self.sampleCount]
-        }
-        let a = sample(index - 1), b = sample(index)
-        let c = sample(index + 1), d = sample(index + 2)
-        let curve = 0.5 * ((2 * b) + (-a + c) * t
-            + (2 * a - 5 * b + 4 * c - d) * t * t
-            + (-a + 3 * b - 3 * c + d) * t * t * t)
-        return min(1, max(0, curve))
+    /// Raw meter history for discrete renderers; index 0 is the oldest sample.
+    func sample(_ index: Int) -> Double {
+        samples[(next + min(Self.sampleCount - 1, max(0, index))) % Self.sampleCount]
     }
+
+    /// How far (0..<1) the history has moved toward its next sample, so
+    /// discrete marks can glide instead of jumping one slot per sample.
+    var progress: Double { min(1, max(0, remainder / Self.sampleInterval)) }
 }

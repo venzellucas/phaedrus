@@ -213,7 +213,7 @@ enum SessionSettingsTests {
         }
         let factory = RecognizerFactory(specs)
         let cleanup = CleanupProbe()
-        let controller = Controller(engineFactory: { factory.make() }, cleanup: { text, _, plan, style in
+        let controller = Controller(engineFactory: { factory.make() }, cleanup: { text, _, plan, style, _ in
             precondition(text == "Hello." && plan == nil, "Text review runs even without timed alternatives")
             return cleanup.apply(style)
         })

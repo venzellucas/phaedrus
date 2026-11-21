@@ -4,6 +4,14 @@
 
 import Foundation
 
+/// What every recognizer heard, for the Contextual style.
+struct CleanupEvidence: Sendable {
+    let draftWords: [TranscriptMerger.Word]
+    /// The draft's recognizer first.
+    let recognitions: [TranscriptMerger.Transcript]
+    static let none = CleanupEvidence(draftWords: [], recognitions: [])
+}
+
 struct CleanupPlan: Sendable {
     enum Ending: String, Sendable { case keep, period, question, exclamation }
     struct Decision: Sendable { let choices: [Int]; let ending: Ending }

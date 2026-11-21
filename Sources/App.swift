@@ -124,7 +124,7 @@ final class Controller: NSObject, NSApplicationDelegate {
     private let hud = HUD()
     private let keys = HotKeys()
     private let makeEngine: @Sendable () -> any DictationRecognizing
-    private let cleanTranscript: @Sendable (String, [String], CleanupPlan?, CleanupStyle) async -> String
+    private let cleanTranscript: @Sendable (String, [String], CleanupPlan?, CleanupStyle, CleanupEvidence) async -> String
     private let pausedDictation = PausedDictationControls()
     private var busy = false
     private var inServiceCall = false
@@ -148,13 +148,14 @@ final class Controller: NSObject, NSApplicationDelegate {
     private var segmentCanPause = true
 
     init(engineFactory: @escaping @Sendable () -> any DictationRecognizing = { DictationEngine() },
-         cleanup: @escaping @Sendable (String, [String], CleanupPlan?, CleanupStyle) async -> String = SmartCleanup.process) {
+         cleanup: @escaping @Sendable (String, [String], CleanupPlan?, CleanupStyle, CleanupEvidence) async -> String = SmartCleanup.process) {
         makeEngine = engineFactory
         cleanTranscript = cleanup
         super.init()
     }
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        ContextCleanup.log = { dlog($0) }
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
         installMenu()
@@ -528,7 +529,7 @@ final class Controller: NSObject, NSApplicationDelegate {
                             }
                             guard ready else { return }
                             dlog("cleanup starting: style=\(cleanupStyle.rawValue)")
-                            text = await cleanup(out.text, locales, out.cleanupPlan, cleanupStyle)
+                            text = await cleanup(out.text, locales, out.cleanupPlan, cleanupStyle, out.evidence)
                             dlog("cleanup finished: style=\(cleanupStyle.rawValue), changed=\(text != out.text)")
                         }
                         let finalText = text

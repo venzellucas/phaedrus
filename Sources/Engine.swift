@@ -40,6 +40,7 @@ final class DictationEngine: DictationRecognizing, @unchecked Sendable {
         let localeIDs: [String]
         let confidence: Double
         let cleanupPlan: CleanupPlan?
+        var evidence: CleanupEvidence = .none
     }
     struct AudioActivity { let level: Double; let lastBuffer: Date? }
 
@@ -328,7 +329,7 @@ final class DictationEngine: DictationRecognizing, @unchecked Sendable {
         }
         if let readerError, lock.withLock({ tracks.allSatisfy(\.readerFailed) }) { throw readerError }
 
-        let snapshot = lock.withLock { () -> (TranscriptMerger.Transcript, [TranscriptMerger.Transcript], Double)? in
+        let snapshot = lock.withLock { () -> (TranscriptMerger.Transcript, [TranscriptMerger.Transcript], Double, [TranscriptMerger.Transcript])? in
             guard let best = leader() else { return nil }
             func transcript(_ track: Track) -> TranscriptMerger.Transcript {
                 .init(localeID: track.locale.identifier, text: track.text,
@@ -337,9 +338,13 @@ final class DictationEngine: DictationRecognizing, @unchecked Sendable {
             let alternatives = mixLanguages ? tracks.filter {
                 $0 !== best && !$0.readerFailed && $0.timingComplete && $0.volatileText.isEmpty
             }.map(transcript) : []
-            return (transcript(best), alternatives, best.confidence)
+            // Every language's view of the audio, for Contextual review.
+            let heard = ([best] + tracks.filter { $0 !== best && !$0.readerFailed })
+                .filter { !$0.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                .map(transcript)
+            return (transcript(best), alternatives, best.confidence, heard)
         }
-        guard let (primary, alternatives, confidence) = snapshot else { return nil }
+        guard let (primary, alternatives, confidence, heard) = snapshot else { return nil }
         let merged = TranscriptMerger.merge(primary: primary, alternatives: alternatives)
         guard !merged.text.isEmpty else { return nil }
         // Include the primary recognizer too: a contextual choice can undo an
@@ -347,7 +352,9 @@ final class DictationEngine: DictationRecognizing, @unchecked Sendable {
         let plan = smartCleanup ? CleanupPlan.make(fallback: merged,
             alternatives: mixLanguages ? [primary] + alternatives : [],
             localeIDs: mixLanguages ? tracks.map { $0.locale.identifier } : merged.localeIDs) : nil
-        return Outcome(text: merged.text, localeIDs: merged.localeIDs, confidence: confidence, cleanupPlan: plan)
+        let evidence = smartCleanup ? CleanupEvidence(draftWords: merged.tokens.map(\.word), recognitions: heard) : .none
+        return Outcome(text: merged.text, localeIDs: merged.localeIDs, confidence: confidence, cleanupPlan: plan,
+                       evidence: evidence)
     }
 
     /// Tears everything down (start failed half-way, or the session was abandoned).
