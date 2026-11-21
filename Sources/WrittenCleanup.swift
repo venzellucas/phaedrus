@@ -39,16 +39,7 @@ enum WrittenCleanup {
         if !source.contains("```") && output.contains("```") { return nil }
         if source.contains("?") && source.filter({ $0 == "?" }).count != output.filter({ $0 == "?" }).count { return nil }
 
-        // Preserve explicit speaker/addressee markers, including contractions.
-        // Repeated subjects may collapse; implicit subjects remain implicit.
-        let speaker = perspective(source)
-        guard speaker == perspective(output) else { return nil }
-        if speaker.isEmpty, let person = implicitFirstPerson(a) {
-            guard implicitFirstPerson(b) == person else { return nil }
-        }
-        let hasPortuguese = localeIDs.contains { Locale(identifier: $0).language.languageCode?.identifier == "pt" }
-        guard critical(a, hasPortuguese: hasPortuguese) == critical(b, hasPortuguese: hasPortuguese) else { return nil }
-        guard FluencyCleanup.technicalAtoms(source) == FluencyCleanup.technicalAtoms(output) else { return nil }
+        guard preservesMarkers(output, source: source, localeIDs: localeIDs) else { return nil }
 
         // A capitalized source name must survive. New capitalized words must
         // already occur in the source or be common grammar words. This is a
@@ -92,6 +83,34 @@ enum WrittenCleanup {
         return output
     }
 
+    /// Speaker/addressee markers, negations, numbers, and technical identifiers.
+    /// Repeated subjects may collapse; implicit subjects remain implicit.
+    static func preservesMarkers(_ output: String, source: String, localeIDs: [String]) -> Bool {
+        let a = keys(source), b = keys(output)
+        // Preserve explicit speaker/addressee markers, including contractions.
+        let speaker = perspective(source)
+        guard speaker == perspective(output) else { return false }
+        if speaker.isEmpty, let person = implicitFirstPerson(a) {
+            guard implicitFirstPerson(b) == person else { return false }
+        }
+        return preservesFacts(output, source: source, localeIDs: localeIDs)
+    }
+
+    /// Negations, numbers, and technical identifiers.
+    static func preservesFacts(_ output: String, source: String, localeIDs: [String]) -> Bool {
+        let a = keys(source), b = keys(output)
+        let hasPortuguese = localeIDs.contains { Locale(identifier: $0).language.languageCode?.identifier == "pt" }
+        guard critical(a, hasPortuguese: hasPortuguese) == critical(b, hasPortuguese: hasPortuguese) else { return false }
+        return FluencyCleanup.technicalAtoms(source) == FluencyCleanup.technicalAtoms(output)
+    }
+
+    /// Folded words with contractions and casual spellings expanded, so that
+    /// "tô" and "estou" or "cant" and "can't" compare equal.
+    static func expansionKeys(_ text: String) -> [String] { keys(text) }
+
+    /// Articles, prepositions, pronouns and auxiliaries (folded).
+    static func isGrammarWord(_ key: String) -> Bool { grammar.contains(key) }
+
     private static func fold(_ word: String) -> String {
         word.folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
             .replacingOccurrences(of: "’", with: "'")
@@ -111,6 +130,11 @@ enum WrittenCleanup {
         "can't": ["can", "not"], "cannot": ["can", "not"], "won't": ["will", "not"],
         "isn't": ["is", "not"], "aren't": ["are", "not"], "wasn't": ["was", "not"], "weren't": ["were", "not"],
         "wouldn't": ["would", "not"], "shouldn't": ["should", "not"], "couldn't": ["could", "not"],
+        // Recognizers often drop the apostrophe.
+        "im": ["i", "am"], "dont": ["do", "not"], "doesnt": ["does", "not"], "didnt": ["did", "not"],
+        "cant": ["can", "not"], "wont": ["will", "not"], "isnt": ["is", "not"], "arent": ["are", "not"],
+        "wasnt": ["was", "not"], "werent": ["were", "not"], "wouldnt": ["would", "not"],
+        "shouldnt": ["should", "not"], "couldnt": ["could", "not"],
         "tô": ["estou"], "tá": ["esta"], "tava": ["estava"], "tavam": ["estavam"], "pra": ["para"], "pro": ["para", "o"],
         "pros": ["para", "os"], "vc": ["voce"], "cê": ["voce"]
     ]

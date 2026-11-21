@@ -155,6 +155,7 @@ final class Controller: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ n: Notification) {
+        ContextCleanup.log = { dlog($0) }
         NSApp.servicesProvider = self
         NSUpdateDynamicServices()
         installMenu()

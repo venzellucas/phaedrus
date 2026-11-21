@@ -221,17 +221,32 @@ not promise the same quality as another app's transcription or language model.
 **Contextual** gives the model every selected language's transcript of the same audio, with
 each recognizer's confidence and its uncertain words. A Portuguese recognizer may hear an
 English “deploy” as “de ploy”; the English recognizer heard it right. Using fields generated in
-order, the model first names the topic, then lists misheard words and what was meant, and only
-then writes the message. Phaedrus then reviews that answer word by word against the
-recognizer's confidence: words recognized with high confidence are put back if the model
-changed or dropped them, unless another recognizer heard the replacement or it is a small
-agreement fix; fillers, repetitions, and uncertain words may go; words nobody heard are removed;
-dropped accents are restored. The result must also pass the Written validation. A rewrite of
-most of the message (such as a translation) is rejected. If the first answer is rejected or
-changes nothing, a second request names the draft's language; if that fails too, Written runs
-with the same word-by-word review. Contextual has a **thirty-second total budget** (each request
-typically takes two to four seconds) and uses Written for dictations too long for the model's
-4,096-token context window.
+order, the model first names the topic, then lists misheard draft words and what was meant, and
+only then writes the message. Phaedrus aligns that answer with the draft word by word and
+rebuilds it in one pass, keeping the model's punctuation:
+
+- A word the recognizer was unsure of may be replaced or dropped.
+- A word recognized with high confidence may change only to an equivalent spelling (tô →
+  estou, cant → can't) or through a listed fix that another recognizer heard at the same
+  moment in the audio, or that sounds alike and doesn't touch a name, number, or pronoun.
+  Agreement fixes (eles vai → vão) must be listed too.
+- A confident word may be dropped only as a hesitation sound, a filler set off by
+  punctuation (“, tipo,”), or a repeat whose other copy stays.
+- An added word must be a grammar word or part of an accepted fix.
+- Anything else is put back from the draft, and so are accents the model dropped.
+
+The result must keep the draft's negations, numbers, technical identifiers, speaker, and
+questions. An answer that needs too many repairs (such as a translation) is rejected; then a
+second request names the draft's language. If nothing is accepted or nothing changes,
+Written runs and its result goes through the same word-by-word review (Written's own
+validation alone for dictations over 1,500 words). If a timed-out request is still holding
+the model, the transcript is kept. Contextual has a **thirty-second total budget**; each
+request typically takes two to four seconds. When several transcripts don't fit the model's
+4,096-token context window, only the draft's recognizer is sent.
+
+With `PHAEDRUS_DEBUG=1`, the debug log shows how many draft words fall in each confidence
+band, each request's outcome, and how many fixes were accepted and words put back. It never
+includes text.
 
 All four styles run entirely on the Mac; no server, API key, or separately managed model is needed.
 

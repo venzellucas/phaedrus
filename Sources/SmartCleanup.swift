@@ -3,6 +3,8 @@ import FoundationModels
 
 enum SmartCleanup {
     static let timeoutSeconds = 5.0
+    /// Seconds of the Contextual budget kept for the Written fallback.
+    static let writtenReserve = 12.0
     private static let inference = InferenceGate()
 
     /// A read-only availability check; never downloads a model or enables Apple
@@ -64,7 +66,8 @@ enum SmartCleanup {
                 ? [TranscriptMerger.Transcript(localeID: localeIDs.first ?? "", text: text, words: [])] : evidence.recognitions
             let languages = Array(Set(localeIDs + recognitions.map(\.localeID))).sorted()
             if let text = await ContextCleanup.process(draft: text, draftWords: evidence.draftWords,
-                    recognitions: recognitions, localeIDs: languages, seconds: style.timeoutSeconds - 12, generating: { prompt, language in
+                    recognitions: recognitions, localeIDs: languages,
+                    seconds: style.timeoutSeconds - writtenReserve, generating: { prompt, language in
                 guard inference.enter() else { return nil }
                 defer { inference.leave() }
                 guard unavailableReason(localeIDs: languages) == nil else { return nil }
@@ -73,13 +76,19 @@ enum SmartCleanup {
                 return text
             }
             // Written gets the rest of the budget, under the same confidence review.
+            // (If a timed-out request is still holding the model, Written can't run
+            // and the transcript is kept.)
             let elapsed = started.duration(to: clock.now)
             let used = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
             let written = await review(text: text, localeIDs: localeIDs, plan: plan, style: .written,
-                                        budget: style.timeoutSeconds - used)
+                                       budget: style.timeoutSeconds - used)
             guard !Task.isCancelled, written != text else { return written }
-            return ContextCleanup.reviewed(written, draft: text, draftWords: evidence.draftWords,
-                                           recognitions: recognitions, fixes: [], localeIDs: languages) ?? text
+            let report = ContextCleanup.review(written, draft: text, draftWords: evidence.draftWords,
+                                               recognitions: recognitions, fixes: [], localeIDs: languages)
+            ContextCleanup.log?("contextual: Written fallback \(report.outcome), \(report.reverted) words put back")
+            // Too long to align word by word: Written's own validation stands.
+            if report.outcome == "too-long" { return written }
+            return report.text ?? text
         }
         return await review(text: text, localeIDs: localeIDs, plan: plan, style: style, budget: style.timeoutSeconds)
     }
