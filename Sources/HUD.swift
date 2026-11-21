@@ -1,4 +1,4 @@
-// A quiet recording surface. While listening, the ribbon shows a short history
+// A quiet recording surface. While listening, level bars show a short history
 // of the real microphone meter. It indicates audio input, not recognition accuracy.
 
 import AppKit
@@ -22,9 +22,10 @@ final class HUD {
 
     // The optional override lets native previews exercise both accessibility
     // modes even on CI Macs that default to Reduce Motion. The app uses nil.
-    init(reduceMotion: Bool? = nil) {
+    init(reduceMotion: Bool? = nil, increaseContrast: Bool? = nil) {
         surface = RecordingSurface(frame: Self.frame)
         surface.reduceMotionOverride = reduceMotion
+        surface.increaseContrastOverride = increaseContrast
         surface.onClick = { [weak self] in self?.onClick?() }
     }
 
@@ -161,8 +162,12 @@ private final class RecordingSurface: NSView {
     }
     var onClick: (() -> Void)?
     var reduceMotionOverride: Bool?
+    var increaseContrastOverride: Bool?
     private var reduceMotion: Bool {
         reduceMotionOverride ?? NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+    private var increaseContrast: Bool {
+        increaseContrastOverride ?? NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
     }
     private var ribbon = AudioRibbon()
     private var phase = 0.0
@@ -278,51 +283,130 @@ private final class RecordingSurface: NSView {
             NSGradient(starting: PhaedrusTheme.panelTop, ending: PhaedrusTheme.panelBottom)?
                 .draw(in: bounds, angle: -90)
         }
-        if mode != .error { drawRibbon() }
+        if mode != .error, let cg = NSGraphicsContext.current?.cgContext { drawBars(cg) }
         NSGraphicsContext.restoreGraphicsState()
-        let contrast = NSWorkspace.shared.accessibilityDisplayShouldIncreaseContrast
+        let contrast = increaseContrast
         NSColor.white.withAlphaComponent(contrast ? 0.65 : 0.16).setStroke()
         shape.lineWidth = 1
         shape.stroke()
     }
+}
 
-    private func drawRibbon() {
+// MARK: - Level bars
+//
+// One rule set: while listening, marks come only from the
+// measured level history; a silent microphone rests flat; an interrupted one
+// keeps its frozen history but drops to a dim neutral gray. Only preparing and
+// transcribing get decorative motion, and Reduce Motion turns that off and
+// replaces the traveling history with a stationary level indicator.
+
+private extension RecordingSurface {
+    enum BandState { case live, interrupted, working, paused }
+
+    static let bandLeft = 34.0
+    static let bandRight = 386.0
+    static let bandCenter = 59.0
+    static var bandWidth: Double { bandRight - bandLeft }
+
+    /// sRGB components of PhaedrusTheme.ribbonColors, resolved once.
+    static let palette: [SIMD3<Double>] = PhaedrusTheme.ribbonColors.map {
+        let c = $0.usingColorSpace(.sRGB) ?? $0
+        return SIMD3(Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent))
+    }
+    static let neutral: SIMD3<Double> = {
+        let c = PhaedrusTheme.panelSecondary.usingColorSpace(.sRGB) ?? PhaedrusTheme.panelSecondary
+        return SIMD3(Double(c.redComponent), Double(c.greenComponent), Double(c.blueComponent))
+    }()
+
+    var bandState: BandState {
+        switch mode {
+        case .listening: inputAvailable ? .live : .interrupted
+        case .preparing, .transcribing: .working
+        case .paused, .error: .paused
+        }
+    }
+
+    static func paletteColor(_ t: Double) -> SIMD3<Double> {
+        let stops = palette
+        let x = min(1, max(0, t)) * Double(stops.count - 1)
+        let i = min(stops.count - 2, Int(x))
+        let f = x - Double(i)
+        return stops[i] + (stops[i + 1] - stops[i]) * f
+    }
+
+    static func smoothstep(_ x: Double) -> Double {
+        let t = min(1, max(0, x))
+        return t * t * (3 - 2 * t)
+    }
+
+    /// Stationary Reduce Motion shape: tallest in the middle, scaled by level.
+    static func bell(_ t: Double) -> Double {
+        let s = sin(.pi * min(1, max(0, t)))
+        return s * s
+    }
+
+    func stroke(_ cg: CGContext, _ rgb: SIMD3<Double>, _ alpha: Double) {
+        cg.setStrokeColor(red: rgb.x, green: rgb.y, blue: rgb.z, alpha: min(1, max(0, alpha)))
+    }
+
+    /// A soft highlight sweeping across the band, for preparing/transcribing only.
+    func sweep(_ t: Double, width: Double) -> Double {
+        let head = (phase * 0.45).truncatingRemainder(dividingBy: 1.5) - 0.25
+        let d = (t - head) / width
+        return exp(-d * d)
+    }
+
+    // MARK: Bars — one capsule per meter sample
+
+    func drawBars(_ cg: CGContext) {
+        let pitch = 4.0, barWidth = 2.2, maxHalf = 16.0
+        let rest = barWidth / 2
+        let state = bandState
+        let contrast = increaseContrast
         let reduced = reduceMotion
-        let listening = mode == .listening
-        let colors = PhaedrusTheme.ribbonColors
-        let interrupted = listening && !inputAvailable
-        for layer in 0..<3 {
-            let path = NSBezierPath()
-            func point(_ step: Int, _ edge: Double) -> NSPoint {
-                let x = Double(step) / 120
-                // Fade just the ends, so new speech is visible near the right edge.
-                let ends = min(1, min(x, 1 - x) / 0.08)
-                let taper = ends * ends * (3 - 2 * ends)
-                let height: Double
-                let center: Double
-                if listening {
-                    // Reduce Motion gets a stationary, symmetric level indicator;
-                    // level changes remain visible without a traveling waveform.
-                    let amplitude = reduced ? ribbon.level * pow(sin(.pi * x), 2) : ribbon.amplitude(at: x)
-                    height = 0.65 + amplitude * (14.0 - Double(layer) * 3.5)
-                    center = 59
-                } else {
-                    let envelope = pow(sin(.pi * x), 1.4)
-                    let wave = reduced || mode == .paused ? 0
-                        : sin(x * .pi * 2.2 - phase + Double(layer) * 1.4)
-                    center = 59 + envelope * wave * 3.5
-                    height = mode == .paused ? 0.65 : 1.3
-                }
-                return NSPoint(x: 34 + x * 352, y: center + edge * height * taper)
+        let traveling = mode == .listening && !reduced
+        let count = Int(Self.bandWidth / pitch) + (traveling ? 1 : 0)
+        let newest = AudioRibbon.sampleCount - 1
+        cg.setLineCap(.round)
+        cg.setLineWidth(barWidth)
+        for i in 0..<count {
+            // Newest at the right; bars glide left by the sub-sample progress so
+            // a 30 Hz meter does not visibly step.
+            let cx = traveling
+                ? Self.bandRight + pitch / 2 - (Double(i) + ribbon.progress) * pitch
+                : Self.bandRight - pitch / 2 - Double(i) * pitch
+            let t = (cx - Self.bandLeft) / Self.bandWidth
+            var amount = 0.0
+            if mode == .listening {
+                amount = reduced ? ribbon.level * Self.bell(t) : ribbon.sample(newest - i)
             }
-            path.move(to: point(0, 1))
-            for step in 1...120 { path.line(to: point(step, 1)) }
-            for step in (0...120).reversed() { path.line(to: point(step, -1)) }
-            path.close()
-            // Layer the same measured envelope; never add decorative oscillation
-            // to a silent or interrupted microphone.
-            let opacity = interrupted ? 0.15 : (layer == 0 ? 0.35 : (layer == 1 ? 0.55 : 0.95))
-            NSGradient(colors: colors.map { $0.withAlphaComponent(opacity) })?.draw(in: path, angle: 0)
+            // Old history fades out on the left; a new bar fades in on the right.
+            var edge = Self.smoothstep((cx - Self.bandLeft) / 56)
+            if traveling { edge *= Self.smoothstep((Self.bandRight + pitch / 2 - cx) / (pitch * 0.6)) }
+            if mode != .listening { edge = Self.smoothstep(min(cx - Self.bandLeft, Self.bandRight - cx) / 28) }
+            let rgb: SIMD3<Double>
+            let alpha: Double
+            switch state {
+            case .live:
+                rgb = Self.paletteColor(t)
+                let restAlpha = contrast ? 0.72 : 0.46
+                alpha = restAlpha + (1 - restAlpha) * min(1, amount * 5)
+            case .interrupted:
+                rgb = Self.neutral
+                alpha = contrast ? 0.45 : 0.2
+            case .working:
+                rgb = Self.paletteColor(t)
+                let glow = reduced ? 0 : sweep(t, width: 0.12)
+                alpha = (contrast ? 0.55 : 0.28) + 0.65 * glow
+            case .paused:
+                rgb = Self.neutral
+                alpha = contrast ? 0.5 : 0.26
+            }
+            let half = max(rest, amount * maxHalf)
+            stroke(cg, rgb, alpha * edge)
+            cg.move(to: CGPoint(x: cx, y: Self.bandCenter - half + rest))
+            cg.addLine(to: CGPoint(x: cx, y: Self.bandCenter + half - rest + 0.001))
+            cg.strokePath()
         }
     }
 }
