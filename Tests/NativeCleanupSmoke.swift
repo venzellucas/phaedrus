@@ -36,5 +36,23 @@ enum NativeCleanupSmoke {
                          "Written output must satisfy its validation")
         }
         print("Native Written cleanup success/fallback check passed; fidelity and grammar still need real model evaluation")
+        // Contextual: an English recognizer heard the loanwords the Portuguese one garbled.
+        let draft = "Eu preciso fazer o de ploy da Brent hoje."
+        func words(_ spec: [(String, Double)]) -> [TranscriptMerger.Word] {
+            spec.enumerated().map { .init(text: ($0.offset == 0 ? "" : " ") + $0.element.0, start: Double($0.offset), end: Double($0.offset) + 0.5, confidence: $0.element.1) }
+        }
+        let pt = words([("Eu", 0.95), ("preciso", 0.95), ("fazer", 0.95), ("o", 0.95), ("de", 0.3), ("ploy", 0.2), ("da", 0.9), ("Brent", 0.3), ("hoje.", 0.95)])
+        let en = words([("Oh", 0.2), ("pressure", 0.2), ("the", 0.6), ("deploy", 0.85), ("the", 0.5), ("branch", 0.8), ("hoje.", 0.2)])
+        let evidence = CleanupEvidence(draftWords: pt, recognitions: [
+            .init(localeID: "pt_BR", text: draft, words: pt),
+            .init(localeID: "en_US", text: en.map(\.text).joined(), words: en)])
+        let contextual = await SmartCleanup.process(text: draft, localeIDs: ["pt_BR", "en_US"], plan: nil,
+                                                    style: .contextual, evidence: evidence)
+        if SmartCleanup.unavailableReason(localeIDs: ["pt_BR", "en_US"]) != nil {
+            precondition(contextual == draft, "Unavailable model must preserve Contextual input")
+        } else {
+            precondition(contextual.hasPrefix("Eu preciso fazer"), "Contextual must keep confident words")
+        }
+        print("Native Contextual cleanup check passed: \(contextual)")
     }
 }

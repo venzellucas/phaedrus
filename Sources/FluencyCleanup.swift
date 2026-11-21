@@ -3,12 +3,13 @@
 import Foundation
 
 enum CleanupStyle: String, CaseIterable, Sendable {
-    case conservative, natural, written
+    case conservative, natural, written, contextual
     var title: String {
         switch self {
         case .conservative: "Conservative"
         case .natural: "Natural"
         case .written: "Written"
+        case .contextual: "Contextual"
         }
     }
     var timeoutSeconds: Double {
@@ -16,6 +17,7 @@ enum CleanupStyle: String, CaseIterable, Sendable {
         case .conservative: 5
         case .natural: 10
         case .written: 15
+        case .contextual: 30
         }
     }
     var explanation: String {
@@ -26,6 +28,8 @@ enum CleanupStyle: String, CaseIterable, Sendable {
             "Natural removes accidental repetitions, fillers, and abandoned starts, and adjusts punctuation. Keeps the remaining words in their original language and order. Cuts can still change meaning; review the result."
         case .written:
             "Written also corrects grammar, spelling, and likely recognition mistakes using context. Aims to keep your voice, grammatical person, meaning, language switches, and order of ideas. It can replace words and make incorrect guesses; review the result."
+        case .contextual:
+            "Contextual shows the model what every language's recognizer heard, with its confidence. It first works out the topic and the misheard words, then writes the message. Words recognized with high confidence are kept unless another recognizer heard them differently, and accents the model drops are restored. Slower; when it can't improve the text, Written runs with the same protections. Long dictations use Written."
         }
     }
 }
