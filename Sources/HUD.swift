@@ -8,17 +8,33 @@ import QuartzCore
 final class HUD {
     enum Mode { case preparing, listening, paused, transcribing, error }
 
-    private let panel: NSPanel
+    private static let frame = NSRect(x: 0, y: 0, width: 420, height: 124)
+    private var panel: NSPanel?
     private let surface: RecordingSurface
     private var animationTimer: Timer?
+    // Whether the panel should be on screen. Tracked here rather than read from
+    // `isVisible`, which can stay true while WindowServer is not drawing it.
+    private var presented = false
+    private var shownAt = 0.0
+    private var lastCheck = 0.0
+    private var rebuilds = 0
     var onClick: (() -> Void)?
 
     // The optional override lets native previews exercise both accessibility
     // modes even on CI Macs that default to Reduce Motion. The app uses nil.
     init(reduceMotion: Bool? = nil) {
-        let frame = NSRect(x: 0, y: 0, width: 420, height: 124)
-        panel = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel],
-                        backing: .buffered, defer: false)
+        surface = RecordingSurface(frame: Self.frame)
+        surface.reduceMotionOverride = reduceMotion
+        surface.onClick = { [weak self] in self?.onClick?() }
+    }
+
+    /// A fresh window for every presentation. A long-lived panel can end up in
+    /// a state where it is ordered in but WindowServer never puts it on screen
+    /// (seen after hours of uptime with several displays); a new window shows.
+    private func makePanel() -> NSPanel {
+        let panel = NSPanel(contentRect: Self.frame, styleMask: [.borderless, .nonactivatingPanel],
+                            backing: .buffered, defer: false)
+        panel.isReleasedWhenClosed = false
         panel.isFloatingPanel = true
         panel.level = .statusBar
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
@@ -28,10 +44,45 @@ final class HUD {
         // or visual-effect backing must never show outside the rounded silhouette.
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
-        surface = RecordingSurface(frame: frame)
-        surface.reduceMotionOverride = reduceMotion
         panel.contentView = surface
-        surface.onClick = { [weak self] in self?.onClick?() }
+        return panel
+    }
+
+    private func present() {
+        panel?.orderOut(nil)
+        panel?.contentView = nil
+        panel?.close()
+        let panel = makePanel()
+        self.panel = panel
+        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) }
+            ?? NSScreen.main ?? NSScreen.screens.first
+        if let f = screen?.visibleFrame {
+            panel.setFrameOrigin(NSPoint(x: f.midX - panel.frame.width / 2, y: f.minY + 78))
+        }
+        panel.orderFrontRegardless()
+        shownAt = CACurrentMediaTime()
+        lastCheck = shownAt
+    }
+
+    /// Ask WindowServer, not AppKit, whether the panel is actually on screen.
+    private var isOnScreen: Bool {
+        guard let panel, panel.windowNumber > 0,
+              let info = CGWindowListCopyWindowInfo(.optionIncludingWindow, CGWindowID(panel.windowNumber))
+                as? [[String: Any]],
+              let window = info.first else { return false }
+        return (window[kCGWindowIsOnscreen as String] as? Bool) ?? false
+    }
+
+    /// Called from the animation timer: if the panel has been ordered in for a
+    /// moment but is still not on screen, replace it with a new window.
+    private func checkOnScreen() {
+        let now = CACurrentMediaTime()
+        guard presented, rebuilds < 3, now - shownAt > 0.3, now - lastCheck > 0.5 else { return }
+        lastCheck = now
+        if isOnScreen { return }
+        rebuilds += 1
+        dlog("hud: panel not on screen, recreating (\(rebuilds))")
+        present()
     }
 
     func languages(_ ids: [String]) {
@@ -52,16 +103,17 @@ final class HUD {
         surface.clock.stringValue = ""
         surface.resetAudio()
         surface.updateLabels()
-        if !panel.isVisible {
-            let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-            if let f = screen?.visibleFrame {
-                panel.setFrameOrigin(NSPoint(x: f.midX - panel.frame.width / 2, y: f.minY + 78))
-            }
-            panel.orderFrontRegardless()
+        if !presented {
+            presented = true
+            rebuilds = 0
+            present()
         }
         if animationTimer == nil {
             let timer = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
-                MainActor.assumeIsolated { self?.surface.tick() }
+                MainActor.assumeIsolated {
+                    self?.surface.tick()
+                    self?.checkOnScreen()
+                }
             }
             // The Service pumps a nested default-mode run loop.
             RunLoop.main.add(timer, forMode: .common)
@@ -89,7 +141,8 @@ final class HUD {
     func hide() {
         animationTimer?.invalidate()
         animationTimer = nil
-        panel.orderOut(nil)
+        presented = false
+        panel?.orderOut(nil)
     }
 }
 
